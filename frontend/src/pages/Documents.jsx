@@ -370,13 +370,36 @@ function DocPreview({ doc, onClose }) {
         table { width: 100%; border-collapse: collapse; }
         .doc-left td { padding: 4pt 0; font-size: 9pt; vertical-align: top; }
         .doc-left td:first-child { color: #555; width: 55pt; white-space: nowrap; }
-        .doc-right { border: 1pt solid #aaa; position: relative; }
+        .doc-right { border: 1pt solid #aaa; }
+        .doc-right table { table-layout: fixed; }
         .doc-right td { padding: 3.5pt 5pt; font-size: 8.5pt; border-bottom: .5pt solid #ccc; vertical-align: middle; }
         .doc-right tr:last-child td { border-bottom: 0; }
         .label-cell { background: #f5f5f5; color: #444; white-space: nowrap; border-right: .5pt solid #ccc; width: 55pt; }
         .val-cell { color: #222; }
-        .stamp-wrap { position: absolute; right: 5pt; top: 50%; transform: translateY(-50%); }
-        .stamp-wrap img { height: 44pt; opacity: .85; }
+        .name-cell { width: 95pt; }
+        .rep-cell { width: 78pt; white-space: nowrap; }
+        .seal-cell {
+          width: 44pt;
+          height: 28pt;
+          padding: 0;
+          position: relative;
+          text-align: center;
+          color: #333;
+          white-space: nowrap;
+          overflow: visible;
+        }
+        .seal-cell .seal-text { position: relative; z-index: 2; font-size: 8pt; }
+        .seal-cell img {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 34pt;
+          height: 34pt;
+          object-fit: contain;
+          transform: translate(-50%, -50%);
+          opacity: .88;
+          z-index: 1;
+        }
         .total-box { border: 1pt solid #aaa; display: grid; grid-template-columns: auto 1fr auto; margin-bottom: 4mm; }
         .total-box .lbl1 { padding: 4pt 8pt; border-right: .5pt solid #ccc; font-size: 8pt; color: #555; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1pt; white-space: nowrap; }
         .total-box .lbl1 small { font-size: 7pt; }
@@ -411,7 +434,7 @@ function DocPreview({ doc, onClose }) {
             <table>
               <tbody>
                 <tr><td class="label-cell">사업장소재지</td><td class="val-cell" colspan="3">${escapeHtml(profile.address)}</td></tr>
-                <tr><td class="label-cell">상호명</td><td class="val-cell">${escapeHtml(profile.name)}</td><td class="val-cell">대표 ${escapeHtml(profile.representative)}</td><td class="val-cell">(인)</td></tr>
+                <tr><td class="label-cell">상호명</td><td class="val-cell name-cell">${escapeHtml(profile.name)}</td><td class="val-cell rep-cell">대표 ${escapeHtml(profile.representative)}</td><td class="val-cell seal-cell"><span class="seal-text">(인)</span><img src="${assetBase}${profile.stamp}" alt="도장" /></td></tr>
                 <tr><td class="label-cell">사업자번호</td><td class="val-cell" colspan="3">${escapeHtml(profile.bizNo)}</td></tr>
                 <tr><td class="label-cell">거래계좌</td><td class="val-cell" colspan="3">${escapeHtml(profile.account)}</td></tr>
                 <tr><td class="label-cell" rowspan="2">E-mail</td><td class="label-cell">대표자</td><td class="val-cell" colspan="2">${escapeHtml(profile.email)}</td></tr>
@@ -419,7 +442,6 @@ function DocPreview({ doc, onClose }) {
                 <tr><td class="label-cell">연락처</td><td class="val-cell">${escapeHtml(profile.phone)}</td><td class="val-cell" colspan="2">FAX&nbsp;&nbsp;${escapeHtml(profile.fax)}</td></tr>
               </tbody>
             </table>
-            <div class="stamp-wrap"><img src="${assetBase}${profile.stamp}" alt="도장" /></div>
           </div>
         </div>
 
