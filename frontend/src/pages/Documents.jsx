@@ -123,7 +123,7 @@ export default function Documents() {
   return (
     <div>
       <div className="flex-between" style={{ marginBottom: 20 }}>
-        <h1 className="page-title" style={{ margin: 0 }}>문서 관리</h1>
+        <h1 className="page-title" style={{ margin: 0 }}>견적서 및 납품서 발행</h1>
         <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ 새 문서</button>
       </div>
 
@@ -142,11 +142,11 @@ export default function Documents() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>ID</th><th>문서번호</th><th>구분</th><th>사업자</th><th>날짜</th><th>수신처</th><th className="num">합계</th><th>메모</th><th></th></tr>
+              <tr><th>ID</th><th>문서번호</th><th>구분</th><th>사업자</th><th>날짜</th><th>수신처</th><th>발행인</th><th className="num">합계</th><th>메모</th><th></th></tr>
             </thead>
             <tbody>
               {docs.length === 0 ? (
-                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>문서가 없습니다</td></tr>
+                <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>문서가 없습니다</td></tr>
               ) : docs.map(d => (
                 <tr key={d.id}>
                   <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--muted)' }}>{d.id}</td>
@@ -155,6 +155,7 @@ export default function Documents() {
                   <td><span className="badge badge-purple">{d.business}</span></td>
                   <td style={{ fontSize: 12 }}>{d.doc_date}</td>
                   <td style={{ fontWeight: 500 }}>{d.recipient}</td>
+                  <td style={{ fontSize: 12 }}>{d.issuer_name || '-'}</td>
                   <td className="num fw-600" style={{ color: 'var(--accent)' }}>₩{d.total?.toLocaleString()}</td>
                   <td style={{ fontSize: 12, color: 'var(--muted)' }}>{d.memo}</td>
                   <td>
@@ -477,6 +478,7 @@ function DocPreview({ doc, onClose }) {
             <span><span className="text-muted">사업자:</span> {doc.business}</span>
             <span><span className="text-muted">날짜:</span> {doc.doc_date}</span>
             <span><span className="text-muted">수신:</span> {doc.recipient}</span>
+            <span><span className="text-muted">발행인:</span> {doc.issuer_name || '-'}</span>
           </div>
           <table>
             <thead>

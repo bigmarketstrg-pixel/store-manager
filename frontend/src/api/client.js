@@ -29,6 +29,7 @@ export const authApi = {
     return api.post('/api/auth/login', form)
   },
   me: () => api.get('/api/auth/me'),
+  changePassword: (data) => api.post('/api/auth/change-password', data),
   getUsers: () => api.get('/api/auth/users'),
   createUser: (data) => api.post('/api/auth/users', data),
   updateUser: (id, data) => api.patch(`/api/auth/users/${id}`, data),

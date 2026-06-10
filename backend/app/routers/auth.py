@@ -23,6 +23,10 @@ class UserOut(BaseModel):
     class Config:
         from_attributes = True
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
 @router.post("/login")
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form.username).first()
@@ -36,6 +40,16 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.post("/change-password")
+def change_password(body: PasswordChange, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="현재 비밀번호가 맞지 않습니다.")
+    if len(body.new_password) < 4:
+        raise HTTPException(status_code=400, detail="새 비밀번호는 4자 이상으로 입력해주세요.")
+    current_user.hashed_password = hash_password(body.new_password)
+    db.commit()
+    return {"ok": True}
 
 @router.get("/users", response_model=list[UserOut])
 def list_users(db: Session = Depends(get_db), admin=Depends(require_admin)):

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db
-from app.models.models import Delivery, Document
+from app.models.models import Delivery, Document, User
 from app.auth import get_current_user, require_admin
 from datetime import date
 import json
@@ -102,6 +102,7 @@ class DocumentOut(BaseModel):
     total: int
     memo: Optional[str]
     items_json: Optional[str]
+    issuer_name: Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -111,6 +112,20 @@ def generate_doc_no(db: Session, doc_type: str) -> str:
     num = int(last.doc_no[1:]) + 1 if last else 1
     return f"{prefix}{num:05d}"
 
+def document_to_out(doc: Document, issuer_name: Optional[str] = None) -> dict:
+    return {
+        "id": doc.id,
+        "doc_type": doc.doc_type,
+        "doc_no": doc.doc_no,
+        "business": doc.business,
+        "doc_date": doc.doc_date,
+        "recipient": doc.recipient,
+        "total": doc.total,
+        "memo": doc.memo,
+        "items_json": doc.items_json,
+        "issuer_name": issuer_name,
+    }
+
 @doc_router.get("", response_model=list[DocumentOut])
 def list_documents(
     doc_type: Optional[str] = None,
@@ -118,12 +133,12 @@ def list_documents(
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    q = db.query(Document)
+    q = db.query(Document, User.name).outerjoin(User, Document.created_by == User.id)
     if doc_type:
         q = q.filter(Document.doc_type == doc_type)
     if business:
         q = q.filter(Document.business == business)
-    return q.order_by(Document.created_at.desc()).all()
+    return [document_to_out(doc, issuer_name) for doc, issuer_name in q.order_by(Document.created_at.desc()).all()]
 
 @doc_router.post("", response_model=DocumentOut)
 def create_document(body: DocumentCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -142,14 +157,14 @@ def create_document(body: DocumentCreate, db: Session = Depends(get_db), user=De
     db.add(doc)
     db.commit()
     db.refresh(doc)
-    return doc
+    return document_to_out(doc, user.name)
 
 @doc_router.get("/{doc_id}", response_model=DocumentOut)
 def get_document(doc_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
+    doc, issuer_name = db.query(Document, User.name).outerjoin(User, Document.created_by == User.id).filter(Document.id == doc_id).first() or (None, None)
     if not doc:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
-    return doc
+    return document_to_out(doc, issuer_name)
 
 @doc_router.delete("/{doc_id}")
 def delete_document(doc_id: int, db: Session = Depends(get_db), user=Depends(require_admin)):
