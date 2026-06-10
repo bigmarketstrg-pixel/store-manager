@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { docApi } from '../api/client'
+import { useAuth } from '../context/AuthContext'
 import { useToast } from '../hooks/useToast.jsx'
 import dayjs from 'dayjs'
 
@@ -91,7 +92,9 @@ export default function Documents() {
   const [filterBusiness, setFilterBusiness] = useState('전체')
   const [showModal, setShowModal] = useState(false)
   const [previewDoc, setPreviewDoc] = useState(null)
+  const { user } = useAuth()
   const { toast, ToastContainer } = useToast()
+  const isAdmin = user?.role === 'admin'
 
   const load = async () => {
     try {
@@ -106,6 +109,7 @@ export default function Documents() {
   useEffect(() => { load() }, [filterType, filterBusiness])
 
   const deleteDoc = async (id) => {
+    if (!isAdmin) { toast('관리자만 삭제할 수 있습니다.', 'error'); return }
     if (!confirm('삭제하시겠습니까?')) return
     try { await docApi.delete(id); toast('삭제 완료'); load() }
     catch { toast('삭제 실패', 'error') }
@@ -119,7 +123,7 @@ export default function Documents() {
   return (
     <div>
       <div className="flex-between" style={{ marginBottom: 20 }}>
-        <h1 className="page-title" style={{ margin: 0 }}>견적서 / 납품서 / 거래명세서</h1>
+        <h1 className="page-title" style={{ margin: 0 }}>문서 관리</h1>
         <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ 새 문서</button>
       </div>
 
@@ -138,13 +142,14 @@ export default function Documents() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>문서번호</th><th>구분</th><th>사업자</th><th>날짜</th><th>수신처</th><th className="num">합계</th><th>메모</th><th></th></tr>
+              <tr><th>ID</th><th>문서번호</th><th>구분</th><th>사업자</th><th>날짜</th><th>수신처</th><th className="num">합계</th><th>메모</th><th></th></tr>
             </thead>
             <tbody>
               {docs.length === 0 ? (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>문서가 없습니다</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>문서가 없습니다</td></tr>
               ) : docs.map(d => (
                 <tr key={d.id}>
+                  <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--muted)' }}>{d.id}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{d.doc_no}</td>
                   <td><span className={`badge ${d.doc_type === '견적서' ? 'badge-blue' : d.doc_type === '납품서' ? 'badge-green' : 'badge-yellow'}`}>{d.doc_type}</span></td>
                   <td><span className="badge badge-purple">{d.business}</span></td>
@@ -155,7 +160,7 @@ export default function Documents() {
                   <td>
                     <div className="flex gap-8">
                       <button className="btn btn-ghost btn-sm" onClick={() => openPreview(d.id)}>미리보기</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteDoc(d.id)}>삭제</button>
+                      {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => deleteDoc(d.id)}>삭제</button>}
                     </div>
                   </td>
                 </tr>
@@ -464,7 +469,7 @@ function DocPreview({ doc, onClose }) {
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" style={{ width: 620 }} onClick={e => e.stopPropagation()}>
         <div className="flex-between" style={{ marginBottom: 20 }}>
-          <h2 style={{ margin: 0 }}>{doc.doc_type} — {doc.doc_no}</h2>
+          <h2 style={{ margin: 0 }}>{doc.doc_type} — {doc.doc_no} <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>ID {doc.id}</span></h2>
           <button className="btn btn-primary btn-sm" onClick={print}>🖨 인쇄</button>
         </div>
         <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 20, fontSize: 13 }}>

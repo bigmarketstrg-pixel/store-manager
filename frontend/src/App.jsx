@@ -30,7 +30,7 @@ export default function App() {
           <Route path="/stock" element={<PrivateRoute><Stock /></PrivateRoute>} />
           <Route path="/inout" element={<PrivateRoute><InOut /></PrivateRoute>} />
           <Route path="/quote" element={<PrivateRoute><Documents /></PrivateRoute>} />
-          <Route path="/delivery-note" element={<PrivateRoute><Documents /></PrivateRoute>} />
+          <Route path="/delivery-note" element={<Navigate to="/quote" replace />} />
           <Route path="/shipping" element={<PrivateRoute><Shipping /></PrivateRoute>} />
           <Route path="/revenue" element={<PrivateRoute><Revenue /></PrivateRoute>} />
           <Route path="/users" element={<PrivateRoute adminOnly><Users /></PrivateRoute>} />

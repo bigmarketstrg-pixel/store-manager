@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db
 from app.models.models import Delivery, Document
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 from datetime import date
 import json
 
@@ -152,7 +152,7 @@ def get_document(doc_id: int, db: Session = Depends(get_db), user=Depends(get_cu
     return doc
 
 @doc_router.delete("/{doc_id}")
-def delete_document(doc_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def delete_document(doc_id: int, db: Session = Depends(get_db), user=Depends(require_admin)):
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
