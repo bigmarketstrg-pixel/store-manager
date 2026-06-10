@@ -1,10 +1,89 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { docApi } from '../api/client'
 import { useToast } from '../hooks/useToast.jsx'
 import dayjs from 'dayjs'
 
 const DOC_TYPES = ['견적서', '납품서', '거래명세서']
 const BUSINESSES = ['오아시스', '훌라']
+
+const BUSINESS_PROFILES = {
+  오아시스: {
+    name: '오아시스뮤직',
+    representative: '김 광 수',
+    bizNo: '898-05-01658',
+    address: '대전 서구 갈마동 1426',
+    account: '새마을금고 9003-3031-3588-0 김광수',
+    phone: '010-4427-2209',
+    fax: '0425233836',
+    email: 'kks3837@naver.com',
+    managerEmail: 'kks3837@naver.com',
+    logo: '/doc-assets/oasis-logo.png',
+    stamp: '/doc-assets/oasis-stamp.png',
+  },
+  훌라: {
+    name: '에이씨씨(훌라우쿨렐레)',
+    representative: '유 영 선',
+    bizNo: '305-28-85306',
+    address: '대전 서구 갈마동 1426',
+    account: '우리은행 1005-602-035478 유영선',
+    phone: '070-4235-6911',
+    fax: '042-632-6445',
+    email: 'tpyou@hanmail.net',
+    managerEmail: 'hulauke@naver.com',
+    logo: '/doc-assets/hula-logo.jpg',
+    stamp: '/doc-assets/hula-stamp.png',
+  },
+}
+
+const escapeHtml = (value = '') => String(value)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;')
+
+const fmtWon = n => Math.round(Number(n) || 0).toLocaleString('ko-KR')
+
+function getBusinessProfile(business) {
+  if (BUSINESS_PROFILES[business]) return BUSINESS_PROFILES[business]
+  if (business?.includes('훌라')) return BUSINESS_PROFILES.훌라
+  return BUSINESS_PROFILES.오아시스
+}
+
+function formatKoreanDate(date) {
+  if (!date) return ''
+  const [y, m, d] = String(date).split('-')
+  if (!y || !m || !d) return String(date)
+  return `${y}년 ${m}월 ${d}일`
+}
+
+function numToKorean(n) {
+  n = Math.round(Number(n) || 0)
+  if (n === 0) return '영 원정'
+  const nums = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구']
+  const units = ['', '십', '백', '천']
+  const bigUnits = ['', '만', '억', '조']
+  let result = ''
+  let big = 0
+
+  while (n > 0) {
+    const chunk = n % 10000
+    n = Math.floor(n / 10000)
+    if (chunk > 0) {
+      let part = ''
+      let rest = chunk
+      for (let i = 0; i < 4; i += 1) {
+        const digit = rest % 10
+        rest = Math.floor(rest / 10)
+        if (digit > 0) part = `${nums[digit]}${units[i]}${part}`
+      }
+      result = `${part}${bigUnits[big]}${result}`
+    }
+    big += 1
+  }
+
+  return `${result}원정`
+}
 
 export default function Documents() {
   const [docs, setDocs] = useState([])
@@ -224,49 +303,160 @@ function DocModal({ onClose, onSave, toast }) {
 
 // ── 미리보기 모달 ──────────────────────────────────────
 function DocPreview({ doc, onClose }) {
-  const printRef = useRef()
   const items = doc.items_json ? JSON.parse(doc.items_json) : []
   const fmt = n => n?.toLocaleString() || '0'
 
   const print = () => {
+    const profile = getBusinessProfile(doc.business)
+    const assetBase = window.location.origin
+    const printItems = [...items]
+    while (printItems.length < 10) printItems.push({ name: '', spec: '', qty: '', price: '' })
+
+    const itemRows = printItems.slice(0, 10).map((item, idx) => {
+      const qty = Number(item.qty) || 0
+      const price = Number(item.price) || 0
+      const amount = qty && price ? qty * price : 0
+      return `<tr>
+        <td class="cen">${idx + 1}</td>
+        <td>${escapeHtml(item.name || '')}</td>
+        <td class="cen">${escapeHtml(item.spec || '')}</td>
+        <td class="num">${qty ? fmtWon(qty) : ''}</td>
+        <td class="num">${price ? fmtWon(price) : ''}</td>
+        <td class="num">${amount ? fmtWon(amount) : '-'}</td>
+        <td></td>
+      </tr>`
+    }).join('')
+
     const w = window.open('', '_blank')
+    if (!w) {
+      alert('팝업이 차단되어 인쇄 창을 열 수 없습니다.')
+      return
+    }
+
     w.document.write(`
-      <html><head><title>${doc.doc_type} ${doc.doc_no}</title>
+      <!doctype html>
+      <html lang="ko"><head><meta charset="UTF-8"><title>${escapeHtml(doc.doc_type)} ${escapeHtml(doc.doc_no)}</title>
       <style>
-        body { font-family: 'Noto Sans KR', sans-serif; padding: 40px; color: #111; }
-        h2 { text-align: center; font-size: 24px; margin-bottom: 8px; }
-        .meta { display: flex; justify-content: space-between; margin-bottom: 24px; font-size: 14px; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th { background: #f0f0f0; border: 1px solid #ccc; padding: 8px; text-align: center; }
-        td { border: 1px solid #ccc; padding: 8px; }
-        td.right { text-align: right; }
-        td.center { text-align: center; }
-        .total { text-align: right; font-size: 18px; font-weight: bold; margin-top: 16px; }
+        @page { size: A4; margin: 0; }
+        * { box-sizing: border-box; }
+        body {
+          font-family: 'Noto Sans KR', 'Malgun Gothic', Arial, sans-serif;
+          margin: 0;
+          color: #222;
+          background: #fff;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .doc {
+          width: 210mm;
+          min-height: 297mm;
+          margin: 0 auto;
+          padding: 15mm 15mm 10mm;
+          background: #fff;
+          font-size: 9pt;
+          position: relative;
+        }
+        .doc-logo { text-align: center; margin-bottom: 4mm; }
+        .doc-logo img { max-height: 28pt; max-width: 150pt; object-fit: contain; }
+        .doc-title { text-align: center; font-size: 18pt; font-weight: 700; letter-spacing: .4em; margin-bottom: 6mm; }
+        .doc-top { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 4mm; }
+        .doc-left { padding-right: 8mm; }
+        table { width: 100%; border-collapse: collapse; }
+        .doc-left td { padding: 4pt 0; font-size: 9pt; vertical-align: top; }
+        .doc-left td:first-child { color: #555; width: 55pt; white-space: nowrap; }
+        .doc-right { border: 1pt solid #aaa; position: relative; }
+        .doc-right td { padding: 3.5pt 5pt; font-size: 8.5pt; border-bottom: .5pt solid #ccc; vertical-align: middle; }
+        .doc-right tr:last-child td { border-bottom: 0; }
+        .label-cell { background: #f5f5f5; color: #444; white-space: nowrap; border-right: .5pt solid #ccc; width: 55pt; }
+        .val-cell { color: #222; }
+        .stamp-wrap { position: absolute; right: 5pt; top: 50%; transform: translateY(-50%); }
+        .stamp-wrap img { height: 44pt; opacity: .85; }
+        .total-box { border: 1pt solid #aaa; display: grid; grid-template-columns: auto 1fr auto; margin-bottom: 4mm; }
+        .total-box .lbl1 { padding: 4pt 8pt; border-right: .5pt solid #ccc; font-size: 8pt; color: #555; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1pt; white-space: nowrap; }
+        .total-box .lbl1 small { font-size: 7pt; }
+        .total-won { display: flex; align-items: center; justify-content: center; font-size: 15pt; font-weight: 700; letter-spacing: .05em; }
+        .total-krw { padding: 4pt 10pt; border-left: .5pt solid #ccc; font-size: 9pt; display: flex; align-items: center; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .doc-provide { font-size: 8.5pt; color: #333; margin-bottom: 3mm; }
+        .doc-items { border: 1pt solid #aaa; margin-bottom: 4mm; }
+        .doc-items th { background: #f5f5f5; padding: 4pt 5pt; font-size: 8.5pt; font-weight: 600; border-bottom: 1pt solid #aaa; text-align: center; }
+        .doc-items th.l { text-align: left; }
+        .doc-items td { padding: 3.5pt 5pt; border-bottom: .5pt solid #e0e0e0; font-size: 8.5pt; vertical-align: middle; height: 22pt; }
+        .doc-items tbody tr:last-child td { border-bottom: 0; }
+        .doc-items tfoot td { padding: 4pt 5pt; border-top: 1pt solid #aaa; font-size: 8.5pt; font-weight: 600; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .cen { text-align: center; }
+        .doc-memo { border-top: 1pt solid #ddd; padding-top: 3mm; font-size: 8pt; color: #444; white-space: pre-wrap; }
       </style></head><body>
-      <h2>${doc.doc_type}</h2>
-      <div class="meta">
-        <span>문서번호: ${doc.doc_no}</span>
-        <span>날짜: ${doc.doc_date}</span>
-        <span>수신: ${doc.recipient}</span>
-        <span>사업자: ${doc.business}</span>
+      <div class="doc">
+        <div class="doc-logo"><img src="${assetBase}${profile.logo}" alt="${escapeHtml(profile.name)} 로고" /></div>
+        <div class="doc-title">${escapeHtml(doc.doc_type)}</div>
+
+        <div class="doc-top">
+          <div class="doc-left">
+            <table>
+              <tbody>
+                <tr><td>날&nbsp;&nbsp;짜 :</td><td>${escapeHtml(formatKoreanDate(doc.doc_date))}</td></tr>
+                <tr><td>수&nbsp;&nbsp;신 :</td><td>${escapeHtml(doc.recipient)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="doc-right">
+            <table>
+              <tbody>
+                <tr><td class="label-cell">사업장소재지</td><td class="val-cell" colspan="3">${escapeHtml(profile.address)}</td></tr>
+                <tr><td class="label-cell">상호명</td><td class="val-cell">${escapeHtml(profile.name)}</td><td class="val-cell">대표 ${escapeHtml(profile.representative)}</td><td class="val-cell">(인)</td></tr>
+                <tr><td class="label-cell">사업자번호</td><td class="val-cell" colspan="3">${escapeHtml(profile.bizNo)}</td></tr>
+                <tr><td class="label-cell">거래계좌</td><td class="val-cell" colspan="3">${escapeHtml(profile.account)}</td></tr>
+                <tr><td class="label-cell" rowspan="2">E-mail</td><td class="label-cell">대표자</td><td class="val-cell" colspan="2">${escapeHtml(profile.email)}</td></tr>
+                <tr><td class="label-cell">담당자</td><td class="val-cell" colspan="2">${escapeHtml(profile.managerEmail)}</td></tr>
+                <tr><td class="label-cell">연락처</td><td class="val-cell">${escapeHtml(profile.phone)}</td><td class="val-cell" colspan="2">FAX&nbsp;&nbsp;${escapeHtml(profile.fax)}</td></tr>
+              </tbody>
+            </table>
+            <div class="stamp-wrap"><img src="${assetBase}${profile.stamp}" alt="도장" /></div>
+          </div>
+        </div>
+
+        <div class="doc-provide">아래와 같이 공급합니다</div>
+
+        <div class="total-box">
+          <div class="lbl1">합계금액<br><small>(공급가액+세액)</small></div>
+          <div class="total-won">${escapeHtml(numToKorean(doc.total))}</div>
+          <div class="total-krw">(₩${fmtWon(doc.total)})</div>
+        </div>
+
+        <div class="doc-items">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:22pt;">No.</th>
+                <th class="l" style="min-width:80pt;">품명</th>
+                <th style="width:48pt;">규격</th>
+                <th style="width:30pt;">수량</th>
+                <th style="width:60pt;">단가</th>
+                <th style="width:70pt;">금액</th>
+                <th style="width:55pt;">비고</th>
+              </tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5" style="text-align:center;">합&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;계</td>
+                <td class="num">${fmtWon(doc.total)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div class="doc-memo">${escapeHtml(doc.memo || '※ 부가세 및 택배비 포함 가격입니다.')}</div>
       </div>
-      <table>
-        <thead><tr><th>품목</th><th>규격</th><th>수량</th><th>단가</th><th>금액</th></tr></thead>
-        <tbody>
-          ${items.map(i => `<tr>
-            <td>${i.name}</td><td class="center">${i.spec || ''}</td>
-            <td class="center">${i.qty}</td>
-            <td class="right">₩${fmt(i.price)}</td>
-            <td class="right">₩${fmt(i.price * i.qty)}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      <div class="total">합계: ₩${fmt(doc.total)}</div>
-      ${doc.memo ? `<p style="margin-top:16px;font-size:13px;color:#666">메모: ${doc.memo}</p>` : ''}
       </body></html>
     `)
     w.document.close()
-    w.print()
+    setTimeout(() => {
+      w.focus()
+      w.print()
+    }, 250)
   }
 
   return (
