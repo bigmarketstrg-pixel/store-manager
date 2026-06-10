@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -6,6 +6,9 @@ from app.database import get_db
 from app.models.models import Product, StockHistory
 from app.auth import get_current_user
 from datetime import date
+import os
+import sqlite3
+import tempfile
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -38,6 +41,12 @@ class ProductOut(BaseModel):
     class Config:
         from_attributes = True
 
+class ImportResult(BaseModel):
+    total: int
+    created: int
+    updated: int
+    skipped: int
+
 @router.get("", response_model=list[ProductOut])
 def list_products(
     q: Optional[str] = Query(None),
@@ -69,6 +78,103 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db), user=Depe
     db.commit()
     db.refresh(p)
     return p
+
+def to_int(value) -> int:
+    if value in (None, ""):
+        return 0
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+def clean_text(value, fallback: str = "") -> str:
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    return text or fallback
+
+def clean_business(value) -> str:
+    text = clean_text(value, "이 외")
+    return text if text in {"다담", "훌라", "오아시스", "이 외"} else "이 외"
+
+@router.post("/import-db", response_model=ImportResult)
+async def import_products_from_db(
+    file: UploadFile = File(...),
+    update_existing: bool = Form(True),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    if not file.filename.lower().endswith((".db", ".sqlite", ".sqlite3")):
+        raise HTTPException(status_code=400, detail="SQLite DB 파일만 업로드할 수 있습니다.")
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+            tmp.write(await file.read())
+            tmp_path = tmp.name
+
+        source = sqlite3.connect(tmp_path)
+        source.row_factory = sqlite3.Row
+        try:
+            has_inventory = source.execute(
+                "select 1 from sqlite_master where type='table' and name='inventory'"
+            ).fetchone()
+            if not has_inventory:
+                raise HTTPException(status_code=400, detail="inventory 테이블을 찾을 수 없습니다.")
+
+            rows = source.execute("select * from inventory").fetchall()
+        finally:
+            source.close()
+
+        total = len(rows)
+        created = updated = skipped = 0
+
+        for row in rows:
+            data = dict(row)
+            name = clean_text(data.get("상품명"))
+            if not name:
+                skipped += 1
+                continue
+
+            business = clean_business(data.get("사업자"))
+            payload = {
+                "name": name,
+                "business": business,
+                "category": clean_text(data.get("대분류"), None),
+                "subcategory": clean_text(data.get("중분류"), None),
+                "brand": clean_text(data.get("브랜드"), None),
+                "cost_price": to_int(data.get("단가")),
+                "sale_price": to_int(data.get("판매가")),
+                "stock": to_int(data.get("수량")),
+            }
+
+            existing = db.query(Product).filter(
+                Product.name == name,
+                Product.business == business
+            ).first()
+
+            if existing:
+                if update_existing:
+                    for key, value in payload.items():
+                        setattr(existing, key, value)
+                    updated += 1
+                else:
+                    skipped += 1
+            else:
+                db.add(Product(**payload))
+                created += 1
+
+        db.commit()
+        return ImportResult(total=total, created=created, updated=updated, skipped=skipped)
+    except HTTPException:
+        db.rollback()
+        raise
+    except sqlite3.DatabaseError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="DB 파일을 읽을 수 없습니다.")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 @router.patch("/{product_id}", response_model=ProductOut)
 def update_product(product_id: int, body: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):

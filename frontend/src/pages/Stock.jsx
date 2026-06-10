@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { productApi } from '../api/client'
 import { useToast } from '../hooks/useToast.jsx'
 
@@ -13,6 +13,8 @@ export default function Stock() {
   const [editItem, setEditItem] = useState(null)
   const [showInbound, setShowInbound] = useState(false)
   const [inboundItem, setInboundItem] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef(null)
   const { toast, ToastContainer } = useToast()
 
   const load = async () => {
@@ -31,13 +33,50 @@ export default function Stock() {
   const openEdit = (item = null) => { setEditItem(item); setShowModal(true) }
   const openInbound = (item) => { setInboundItem(item); setShowInbound(true) }
 
+  const importDb = async (file) => {
+    if (!file) return
+    if (!confirm('DB 파일의 재고를 가져올까요? 같은 상품명+사업자는 기존 상품 정보가 업데이트됩니다.')) {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    const form = new FormData()
+    form.append('file', file)
+    form.append('update_existing', 'true')
+
+    setImporting(true)
+    try {
+      const r = await productApi.importDb(form)
+      const { total, created, updated, skipped } = r.data
+      toast(`가져오기 완료: 전체 ${total}개 / 추가 ${created}개 / 업데이트 ${updated}개 / 건너뜀 ${skipped}개`)
+      load()
+    } catch (err) {
+      toast(err.response?.data?.detail || 'DB 가져오기 실패', 'error')
+    } finally {
+      setImporting(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   const fmt = n => n?.toLocaleString() || '0'
 
   return (
     <div>
       <div className="flex-between" style={{ marginBottom: 20 }}>
         <h1 className="page-title" style={{ margin: 0 }}>재고 관리</h1>
-        <button className="btn btn-primary" onClick={() => openEdit(null)}>+ 상품 추가</button>
+        <div className="flex gap-8">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".db,.sqlite,.sqlite3"
+            style={{ display: 'none' }}
+            onChange={e => importDb(e.target.files?.[0])}
+          />
+          <button className="btn btn-ghost" disabled={importing} onClick={() => fileInputRef.current?.click()}>
+            {importing ? '가져오는 중...' : 'DB 가져오기'}
+          </button>
+          <button className="btn btn-primary" onClick={() => openEdit(null)}>+ 상품 추가</button>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
