@@ -1,4 +1,3 @@
-// ── 판매 내역 ──────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { saleApi } from '../api/client'
 import { useToast } from '../hooks/useToast'
@@ -6,7 +5,7 @@ import dayjs from 'dayjs'
 
 const BUSINESSES = ['전체', '다담', '훌라', '오아시스', '이 외']
 
-export function SalesHistory() {
+export default function SalesHistory() {
   const [sales, setSales] = useState([])
   const [start, setStart] = useState(dayjs().subtract(7, 'day').format('YYYY-MM-DD'))
   const [end, setEnd] = useState(dayjs().format('YYYY-MM-DD'))
