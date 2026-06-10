@@ -22,6 +22,7 @@ export default function Stock() {
   const [inboundItem, setInboundItem] = useState(null)
   const [importing, setImporting] = useState(false)
   const fileInputRef = useRef(null)
+  const importModeRef = useRef('merge')
   const { toast, ToastContainer } = useToast()
 
   const load = async () => {
@@ -59,9 +60,22 @@ export default function Stock() {
     setSaleMax('')
   }
 
+  const startImport = (mode) => {
+    importModeRef.current = mode
+    fileInputRef.current?.click()
+  }
+
   const importDb = async (file) => {
     if (!file) return
-    if (!confirm('DB 파일의 재고를 가져올까요? 같은 상품명+사업자는 기존 상품 정보가 업데이트됩니다.')) {
+    const replaceAll = importModeRef.current === 'replace'
+    if (replaceAll && !confirm('기존 재고 상품을 모두 삭제하고 이 DB 파일로 다시 채울까요? 이 작업은 되돌릴 수 없습니다.')) {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+    const importMessage = replaceAll
+      ? '선택한 DB 파일의 재고를 새 기준으로 가져옵니다.'
+      : 'DB 파일의 재고를 가져올까요? 같은 상품명+사업자는 기존 상품 정보가 업데이트됩니다.'
+    if (!confirm(importMessage)) {
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
@@ -69,11 +83,13 @@ export default function Stock() {
     const form = new FormData()
     form.append('file', file)
     form.append('update_existing', 'true')
+    form.append('replace_all', replaceAll ? 'true' : 'false')
 
     setImporting(true)
     try {
       const r = await productApi.importDb(form)
-      const { total, created, updated, skipped } = r.data
+      const { total, created, updated, skipped, deleted = 0 } = r.data
+      if (deleted) toast(`기존 재고 ${deleted}개 삭제 후 교체했습니다.`)
       toast(`가져오기 완료: 전체 ${total}개 / 추가 ${created}개 / 업데이트 ${updated}개 / 건너뜀 ${skipped}개`)
       load()
     } catch (err) {
@@ -98,8 +114,11 @@ export default function Stock() {
             style={{ display: 'none' }}
             onChange={e => importDb(e.target.files?.[0])}
           />
-          <button className="btn btn-ghost" disabled={importing} onClick={() => fileInputRef.current?.click()}>
+          <button className="btn btn-ghost" disabled={importing} onClick={() => startImport('merge')}>
             {importing ? '가져오는 중...' : 'DB 가져오기'}
+          </button>
+          <button className="btn btn-danger" disabled={importing} onClick={() => startImport('replace')}>
+            DB 전체교체
           </button>
           <button className="btn btn-primary" onClick={() => openEdit(null)}>+ 상품 추가</button>
         </div>

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -46,6 +47,7 @@ class ImportResult(BaseModel):
     created: int
     updated: int
     skipped: int
+    deleted: int = 0
 
 @router.get("", response_model=list[ProductOut])
 def list_products(
@@ -119,6 +121,7 @@ def clean_business(value) -> str:
 async def import_products_from_db(
     file: UploadFile = File(...),
     update_existing: bool = Form(True),
+    replace_all: bool = Form(False),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -145,7 +148,18 @@ async def import_products_from_db(
             source.close()
 
         total = len(rows)
-        created = updated = skipped = 0
+        created = updated = skipped = deleted = 0
+
+        if replace_all:
+            try:
+                deleted = db.query(Product).delete(synchronize_session=False)
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                raise HTTPException(
+                    status_code=400,
+                    detail="판매/입출고 기록이 연결된 상품이 있어 전체 교체를 할 수 없습니다. 기존 유지 가져오기를 사용하거나 기록 정리가 필요합니다."
+                )
 
         for row in rows:
             data = dict(row)
@@ -183,7 +197,7 @@ async def import_products_from_db(
                 created += 1
 
         db.commit()
-        return ImportResult(total=total, created=created, updated=updated, skipped=skipped)
+        return ImportResult(total=total, created=created, updated=updated, skipped=skipped, deleted=deleted)
     except HTTPException:
         db.rollback()
         raise
