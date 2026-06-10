@@ -396,6 +396,7 @@ function DocPreview({ doc, onClose }) {
             <table>
               <tbody>
                 <tr><td>날&nbsp;&nbsp;짜 :</td><td>${escapeHtml(formatKoreanDate(doc.doc_date))}</td></tr>
+                <tr><td>문서번호 :</td><td>${escapeHtml(doc.doc_no)}</td></tr>
                 <tr><td>수&nbsp;&nbsp;신 :</td><td>${escapeHtml(doc.recipient)}</td></tr>
               </tbody>
             </table>
