@@ -8,6 +8,13 @@ export default function Stock() {
   const [products, setProducts] = useState([])
   const [q, setQ] = useState('')
   const [business, setBusiness] = useState('전체')
+  const [category, setCategory] = useState('')
+  const [subcategory, setSubcategory] = useState('')
+  const [brand, setBrand] = useState('')
+  const [costMin, setCostMin] = useState('')
+  const [costMax, setCostMax] = useState('')
+  const [saleMin, setSaleMin] = useState('')
+  const [saleMax, setSaleMax] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -23,15 +30,34 @@ export default function Stock() {
       const params = {}
       if (q) params.q = q
       if (business !== '전체') params.business = business
+      if (category) params.category = category
+      if (subcategory) params.subcategory = subcategory
+      if (brand) params.brand = brand
+      if (costMin !== '') params.cost_min = +costMin
+      if (costMax !== '') params.cost_max = +costMax
+      if (saleMin !== '') params.sale_min = +saleMin
+      if (saleMax !== '') params.sale_max = +saleMax
       const r = await productApi.list(params)
       setProducts(r.data)
     } finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [q, business])
+  useEffect(() => { load() }, [q, business, category, subcategory, brand, costMin, costMax, saleMin, saleMax])
 
   const openEdit = (item = null) => { setEditItem(item); setShowModal(true) }
   const openInbound = (item) => { setInboundItem(item); setShowInbound(true) }
+
+  const resetFilters = () => {
+    setQ('')
+    setBusiness('전체')
+    setCategory('')
+    setSubcategory('')
+    setBrand('')
+    setCostMin('')
+    setCostMax('')
+    setSaleMin('')
+    setSaleMax('')
+  }
 
   const importDb = async (file) => {
     if (!file) return
@@ -80,11 +106,19 @@ export default function Stock() {
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="flex gap-8">
-          <input className="input" placeholder="상품명 검색..." value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 260 }} />
+        <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
+          <input className="input" placeholder="상품명 검색..." value={q} onChange={e => setQ(e.target.value)} style={{ width: 200 }} />
           <select className="input" value={business} onChange={e => setBusiness(e.target.value)} style={{ width: 120 }}>
             {BUSINESSES.map(b => <option key={b}>{b}</option>)}
           </select>
+          <input className="input" placeholder="대분류" value={category} onChange={e => setCategory(e.target.value)} style={{ width: 130 }} />
+          <input className="input" placeholder="중분류" value={subcategory} onChange={e => setSubcategory(e.target.value)} style={{ width: 130 }} />
+          <input className="input" placeholder="브랜드" value={brand} onChange={e => setBrand(e.target.value)} style={{ width: 130 }} />
+          <input className="input" type="number" placeholder="단가 최소" value={costMin} onChange={e => setCostMin(e.target.value)} style={{ width: 110 }} />
+          <input className="input" type="number" placeholder="단가 최대" value={costMax} onChange={e => setCostMax(e.target.value)} style={{ width: 110 }} />
+          <input className="input" type="number" placeholder="판매가 최소" value={saleMin} onChange={e => setSaleMin(e.target.value)} style={{ width: 120 }} />
+          <input className="input" type="number" placeholder="판매가 최대" value={saleMax} onChange={e => setSaleMax(e.target.value)} style={{ width: 120 }} />
+          <button className="btn btn-ghost" onClick={resetFilters}>초기화</button>
         </div>
       </div>
 

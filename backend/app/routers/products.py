@@ -52,6 +52,12 @@ def list_products(
     q: Optional[str] = Query(None),
     business: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
+    subcategory: Optional[str] = Query(None),
+    brand: Optional[str] = Query(None),
+    cost_min: Optional[int] = Query(None),
+    cost_max: Optional[int] = Query(None),
+    sale_min: Optional[int] = Query(None),
+    sale_max: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -61,7 +67,19 @@ def list_products(
     if business:
         query = query.filter(Product.business == business)
     if category:
-        query = query.filter(Product.category == category)
+        query = query.filter(Product.category.ilike(f"%{category}%"))
+    if subcategory:
+        query = query.filter(Product.subcategory.ilike(f"%{subcategory}%"))
+    if brand:
+        query = query.filter(Product.brand.ilike(f"%{brand}%"))
+    if cost_min is not None:
+        query = query.filter(Product.cost_price >= cost_min)
+    if cost_max is not None:
+        query = query.filter(Product.cost_price <= cost_max)
+    if sale_min is not None:
+        query = query.filter(Product.sale_price >= sale_min)
+    if sale_max is not None:
+        query = query.filter(Product.sale_price <= sale_max)
     return query.order_by(Product.name).all()
 
 @router.get("/{product_id}", response_model=ProductOut)
