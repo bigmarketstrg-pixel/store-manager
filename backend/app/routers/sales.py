@@ -150,7 +150,7 @@ def delete_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(get_cu
 # ── 매출 집계 ──────────────────────────────────────────
 @router.get("/summary")
 def sales_summary(
-    group_by: str = Query("day"),  # day / month / business / product / channel / payment
+    group_by: str = Query("day"),  # day / month / business / category / subcategory / brand / product / channel / payment
     start: Optional[date] = None,
     end: Optional[date] = None,
     business: Optional[str] = None,
@@ -175,6 +175,12 @@ def sales_summary(
             key = str(sale.sale_date)[:7]
         elif group_by == "business":
             key = sale.business or "기타"
+        elif group_by == "category":
+            key = sale.category or "미분류"
+        elif group_by == "subcategory":
+            key = sale.subcategory or "미분류"
+        elif group_by == "brand":
+            key = sale.brand or "미분류"
         elif group_by == "product":
             key = sale.product_name
         elif group_by == "channel":
@@ -184,10 +190,36 @@ def sales_summary(
         else:
             key = str(sale.sale_date)
 
-        if key not in result:
-            result[key] = {"key": key, "total": 0, "count": 0, "quantity": 0}
-        result[key]["total"] += sale.total
-        result[key]["count"] += 1
-        result[key]["quantity"] += sale.quantity
+        cost_total = (sale.cost_price or 0) * (sale.quantity or 0)
+        profit = (sale.total or 0) - cost_total
 
-    return sorted(result.values(), key=lambda x: x["key"], reverse=(group_by in ["day", "month"]))
+        if key not in result:
+            result[key] = {
+                "key": key,
+                "total": 0,
+                "cost_total": 0,
+                "profit": 0,
+                "count": 0,
+                "quantity": 0,
+            }
+        result[key]["total"] += sale.total or 0
+        result[key]["cost_total"] += cost_total
+        result[key]["profit"] += profit
+        result[key]["count"] += 1
+        result[key]["quantity"] += sale.quantity or 0
+
+    total_revenue = sum(row["total"] for row in result.values())
+    total_profit = sum(row["profit"] for row in result.values())
+    total_quantity = sum(row["quantity"] for row in result.values())
+
+    rows = []
+    for row in result.values():
+        row["margin_rate"] = round((row["profit"] / row["total"]) * 100, 1) if row["total"] else 0
+        row["revenue_percent"] = round((row["total"] / total_revenue) * 100, 1) if total_revenue else 0
+        row["profit_percent"] = round((row["profit"] / total_profit) * 100, 1) if total_profit else 0
+        row["quantity_percent"] = round((row["quantity"] / total_quantity) * 100, 1) if total_quantity else 0
+        row["avg_sale"] = round(row["total"] / row["quantity"]) if row["quantity"] else 0
+        row["avg_profit"] = round(row["profit"] / row["quantity"]) if row["quantity"] else 0
+        rows.append(row)
+
+    return sorted(rows, key=lambda x: x["key"], reverse=(group_by in ["day", "month"]))

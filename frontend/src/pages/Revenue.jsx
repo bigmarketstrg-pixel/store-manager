@@ -6,6 +6,9 @@ const GROUP_OPTIONS = [
   { value: 'day', label: '일별' },
   { value: 'month', label: '월별' },
   { value: 'business', label: '사업자별' },
+  { value: 'category', label: '대분류별' },
+  { value: 'subcategory', label: '중분류별' },
+  { value: 'brand', label: '브랜드별' },
   { value: 'product', label: '상품별' },
   { value: 'channel', label: '판매경로별' },
   { value: 'payment', label: '결제방식별' },
@@ -33,8 +36,12 @@ export default function Revenue() {
   useEffect(() => { load() }, [groupBy])
 
   const totalRevenue = data.reduce((s, r) => s + r.total, 0)
+  const totalCost = data.reduce((s, r) => s + (r.cost_total || 0), 0)
+  const totalProfit = data.reduce((s, r) => s + (r.profit || 0), 0)
   const totalCount = data.reduce((s, r) => s + r.count, 0)
+  const totalQuantity = data.reduce((s, r) => s + r.quantity, 0)
   const maxTotal = Math.max(...data.map(r => r.total), 1)
+  const profitRate = totalRevenue ? ((totalProfit / totalRevenue) * 100).toFixed(1) : '0.0'
   const fmt = n => n?.toLocaleString() || '0'
 
   return (
@@ -57,14 +64,27 @@ export default function Revenue() {
       </div>
 
       {/* 요약 카드 */}
-      <div className="grid-3" style={{ marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 20 }}>
         <div className="card" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>총 매출</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--green)' }}>₩{fmt(totalRevenue)}</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>총 순수익</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: totalProfit >= 0 ? 'var(--accent)' : 'var(--red)' }}>₩{fmt(totalProfit)}</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>마진율 {profitRate}%</div>
+        </div>
+        <div className="card" style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>총 원가</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--muted)' }}>₩{fmt(totalCost)}</div>
+        </div>
+        <div className="card" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>총 거래건수</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent)' }}>{fmt(totalCount)}건</div>
+        </div>
+        <div className="card" style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>총 판매수량</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent2)' }}>{fmt(totalQuantity)}개</div>
         </div>
         <div className="card" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>평균 거래금액</div>
@@ -88,7 +108,9 @@ export default function Revenue() {
                 <div key={row.key} style={{ marginBottom: 10 }}>
                   <div className="flex-between" style={{ marginBottom: 4 }}>
                     <span style={{ fontSize: 13, fontWeight: 500 }}>{row.key}</span>
-                    <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>₩{fmt(row.total)}</span>
+                    <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>
+                      ₩{fmt(row.total)} · {row.revenue_percent ?? (totalRevenue ? ((row.total / totalRevenue) * 100).toFixed(1) : 0)}%
+                    </span>
                   </div>
                   <div style={{ height: 8, background: 'var(--surface2)', borderRadius: 4, overflow: 'hidden' }}>
                     <div style={{
@@ -108,9 +130,15 @@ export default function Revenue() {
                 <tr>
                   <th>{GROUP_OPTIONS.find(o => o.value === groupBy)?.label}</th>
                   <th className="num">매출</th>
+                  <th className="num">원가</th>
+                  <th className="num">순수익</th>
+                  <th className="num">마진율</th>
                   <th className="num">거래건수</th>
                   <th className="num">판매수량</th>
-                  <th className="num">비율</th>
+                  <th className="num">매출비중</th>
+                  <th className="num">수량비중</th>
+                  <th className="num">평균단가</th>
+                  <th className="num">개당순익</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,11 +146,17 @@ export default function Revenue() {
                   <tr key={row.key}>
                     <td style={{ fontWeight: 500 }}>{row.key}</td>
                     <td className="num fw-600" style={{ color: 'var(--accent)' }}>₩{fmt(row.total)}</td>
+                    <td className="num" style={{ color: 'var(--muted)' }}>₩{fmt(row.cost_total)}</td>
+                    <td className="num fw-600" style={{ color: row.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>₩{fmt(row.profit)}</td>
+                    <td className="num">{row.margin_rate ?? 0}%</td>
                     <td className="num">{fmt(row.count)}건</td>
                     <td className="num">{fmt(row.quantity)}개</td>
                     <td className="num" style={{ color: 'var(--muted)' }}>
-                      {totalRevenue ? ((row.total / totalRevenue) * 100).toFixed(1) : 0}%
+                      {row.revenue_percent ?? (totalRevenue ? ((row.total / totalRevenue) * 100).toFixed(1) : 0)}%
                     </td>
+                    <td className="num" style={{ color: 'var(--muted)' }}>{row.quantity_percent ?? 0}%</td>
+                    <td className="num">₩{fmt(row.avg_sale)}</td>
+                    <td className="num">₩{fmt(row.avg_profit)}</td>
                   </tr>
                 ))}
               </tbody>
