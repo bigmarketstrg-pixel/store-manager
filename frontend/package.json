@@ -13,8 +13,7 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.23.1",
     "axios": "^1.7.2",
-    "dayjs": "^1.11.11",
-    "xlsx": "^0.18.5"
+    "dayjs": "^1.11.11"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",
