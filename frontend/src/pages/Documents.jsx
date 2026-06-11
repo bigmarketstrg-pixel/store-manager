@@ -6,6 +6,13 @@ import dayjs from 'dayjs'
 
 const DOC_TYPES = ['견적서', '납품서', '거래명세서']
 const BUSINESSES = ['오아시스', '훌라']
+const SEARCH_FIELDS = [
+  { value: 'all', label: '전체' },
+  { value: 'doc_no', label: '문서번호' },
+  { value: 'recipient', label: '수신처' },
+  { value: 'issuer', label: '발행인' },
+  { value: 'memo', label: '메모' },
+]
 
 const BUSINESS_PROFILES = {
   오아시스: {
@@ -90,6 +97,9 @@ export default function Documents() {
   const [docs, setDocs] = useState([])
   const [filterType, setFilterType] = useState('전체')
   const [filterBusiness, setFilterBusiness] = useState('전체')
+  const [searchField, setSearchField] = useState('all')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchText, setSearchText] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [previewDoc, setPreviewDoc] = useState(null)
   const { user } = useAuth()
@@ -101,12 +111,23 @@ export default function Documents() {
       const params = {}
       if (filterType !== '전체') params.doc_type = filterType
       if (filterBusiness !== '전체') params.business = filterBusiness
+      if (searchText.trim()) {
+        params.search_field = searchField
+        params.search = searchText.trim()
+      }
       const r = await docApi.list(params)
       setDocs(r.data)
     } catch { toast('불러오기 실패', 'error') }
   }
 
-  useEffect(() => { load() }, [filterType, filterBusiness])
+  useEffect(() => { load() }, [filterType, filterBusiness, searchText])
+
+  const runSearch = () => setSearchText(searchInput)
+  const resetSearch = () => {
+    setSearchField('all')
+    setSearchInput('')
+    setSearchText('')
+  }
 
   const deleteDoc = async (id) => {
     if (!isAdmin) { toast('관리자만 삭제할 수 있습니다.', 'error'); return }
@@ -128,13 +149,26 @@ export default function Documents() {
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="flex gap-8">
+        <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
           <select className="input" value={filterType} onChange={e => setFilterType(e.target.value)} style={{ width: 140 }}>
             {['전체', ...DOC_TYPES].map(t => <option key={t}>{t}</option>)}
           </select>
           <select className="input" value={filterBusiness} onChange={e => setFilterBusiness(e.target.value)} style={{ width: 120 }}>
             {['전체', ...BUSINESSES].map(b => <option key={b}>{b}</option>)}
           </select>
+          <select className="input" value={searchField} onChange={e => setSearchField(e.target.value)} style={{ width: 120 }}>
+            {SEARCH_FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+          <input
+            className="input"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') runSearch() }}
+            placeholder="검색어 입력"
+            style={{ width: 220 }}
+          />
+          <button className="btn btn-primary" onClick={runSearch}>검색</button>
+          <button className="btn btn-ghost" onClick={resetSearch}>초기화</button>
         </div>
       </div>
 
