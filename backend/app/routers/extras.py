@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -131,8 +130,6 @@ def document_to_out(doc: Document, issuer_name: Optional[str] = None) -> dict:
 def list_documents(
     doc_type: Optional[str] = None,
     business: Optional[str] = None,
-    search_field: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -141,23 +138,6 @@ def list_documents(
         q = q.filter(Document.doc_type == doc_type)
     if business:
         q = q.filter(Document.business == business)
-    if search:
-        keyword = f"%{search.strip()}%"
-        if search_field == "doc_no":
-            q = q.filter(Document.doc_no.ilike(keyword))
-        elif search_field == "recipient":
-            q = q.filter(Document.recipient.ilike(keyword))
-        elif search_field == "memo":
-            q = q.filter(Document.memo.ilike(keyword))
-        elif search_field == "issuer":
-            q = q.filter(User.name.ilike(keyword))
-        else:
-            q = q.filter(or_(
-                Document.doc_no.ilike(keyword),
-                Document.recipient.ilike(keyword),
-                Document.memo.ilike(keyword),
-                User.name.ilike(keyword),
-            ))
     return [document_to_out(doc, issuer_name) for doc, issuer_name in q.order_by(Document.created_at.desc()).all()]
 
 @doc_router.post("", response_model=DocumentOut)

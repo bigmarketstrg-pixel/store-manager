@@ -111,10 +111,6 @@ export default function Documents() {
       const params = {}
       if (filterType !== '전체') params.doc_type = filterType
       if (filterBusiness !== '전체') params.business = filterBusiness
-      if (searchText.trim()) {
-        params.search_field = searchField
-        params.search = searchText.trim()
-      }
       const r = await docApi.list(params)
       setDocs(r.data)
     } catch { toast('불러오기 실패', 'error') }
@@ -128,6 +124,18 @@ export default function Documents() {
     setSearchInput('')
     setSearchText('')
   }
+  const visibleDocs = docs.filter(doc => {
+    const keyword = searchText.trim().toLowerCase()
+    if (!keyword) return true
+    const fields = {
+      doc_no: doc.doc_no,
+      recipient: doc.recipient,
+      issuer: doc.issuer_name,
+      memo: doc.memo,
+    }
+    if (searchField !== 'all') return String(fields[searchField] || '').toLowerCase().includes(keyword)
+    return Object.values(fields).some(value => String(value || '').toLowerCase().includes(keyword))
+  })
 
   const deleteDoc = async (id) => {
     if (!isAdmin) { toast('관리자만 삭제할 수 있습니다.', 'error'); return }
@@ -179,9 +187,9 @@ export default function Documents() {
               <tr><th>ID</th><th>문서번호</th><th>구분</th><th>사업자</th><th>날짜</th><th>수신처</th><th>발행인</th><th className="num">합계</th><th>메모</th><th></th></tr>
             </thead>
             <tbody>
-              {docs.length === 0 ? (
+              {visibleDocs.length === 0 ? (
                 <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>문서가 없습니다</td></tr>
-              ) : docs.map(d => (
+              ) : visibleDocs.map(d => (
                 <tr key={d.id}>
                   <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--muted)' }}>{d.id}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{d.doc_no}</td>
