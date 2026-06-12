@@ -43,6 +43,7 @@ export const productApi = {
   update: (id, data) => api.patch(`/api/products/${id}`, data),
   delete: (id) => api.delete(`/api/products/${id}`),
   inbound: (data) => api.post('/api/products/inbound', data),
+  inboundBulk: (data) => api.post('/api/products/inbound-bulk', data),
   importDb: (form) => api.post('/api/products/import-db', form),
   history: (params) => api.get('/api/products/history/all', { params }),
 }

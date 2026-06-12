@@ -6,7 +6,7 @@ from typing import Optional
 from app.database import get_db
 from app.models.models import Product, StockHistory
 from app.auth import get_current_user
-from datetime import date
+from datetime import date, datetime
 import os
 import sqlite3
 import tempfile
@@ -238,6 +238,21 @@ class InboundCreate(BaseModel):
     memo: Optional[str] = None
     transaction_no: Optional[str] = None
 
+class BulkInboundItem(BaseModel):
+    brand: Optional[str] = None
+    product_name: str
+    quantity: int
+    cost_price: int = 0
+    amount: Optional[int] = None
+
+class BulkInboundCreate(BaseModel):
+    record_date: date
+    supplier_name: str
+    total_amount: int = 0
+    memo: Optional[str] = None
+    transaction_no: Optional[str] = None
+    items: list[BulkInboundItem]
+
 @router.post("/inbound")
 def inbound(body: InboundCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     p = db.query(Product).filter(Product.id == body.product_id).first()
@@ -264,6 +279,82 @@ def inbound(body: InboundCreate, db: Session = Depends(get_db), user=Depends(get
     db.add(history)
     db.commit()
     return {"ok": True, "new_stock": p.stock}
+
+@router.post("/inbound-bulk")
+def inbound_bulk(body: BulkInboundCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if not body.items:
+        raise HTTPException(status_code=400, detail="입고할 품목을 입력해주세요.")
+
+    transaction_no = body.transaction_no or f"IN{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    created_count = 0
+    updated_count = 0
+    total_quantity = 0
+
+    for item in body.items:
+        name = clean_text(item.product_name)
+        if not name or item.quantity <= 0:
+            continue
+
+        query = db.query(Product).filter(Product.name == name)
+        brand = clean_text(item.brand, None)
+        if brand:
+            query = query.filter(Product.brand == brand)
+        product = query.order_by(Product.id.asc()).first()
+
+        if not product:
+            product = Product(
+                name=name,
+                business="이 외",
+                brand=brand,
+                cost_price=item.cost_price or 0,
+                sale_price=0,
+                stock=0,
+            )
+            db.add(product)
+            db.flush()
+            created_count += 1
+        else:
+            updated_count += 1
+
+        product.stock += item.quantity
+        if item.cost_price:
+            product.cost_price = item.cost_price
+
+        amount = item.amount if item.amount is not None else (item.quantity * (item.cost_price or 0))
+        memo_parts = [f"상호명: {body.supplier_name}", f"금액: {amount}", f"총액: {body.total_amount}"]
+        if body.memo:
+            memo_parts.append(body.memo)
+
+        history = StockHistory(
+            transaction_no=transaction_no,
+            record_date=body.record_date,
+            product_id=product.id,
+            product_name=product.name,
+            business=product.business,
+            category=product.category,
+            subcategory=product.subcategory,
+            brand=product.brand,
+            io_type="입고",
+            quantity=item.quantity,
+            cost_price=item.cost_price,
+            memo=" / ".join(memo_parts),
+            created_by=user.id
+        )
+        db.add(history)
+        total_quantity += item.quantity
+
+    if total_quantity == 0:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="입고할 수량이 있는 품목을 입력해주세요.")
+
+    db.commit()
+    return {
+        "ok": True,
+        "transaction_no": transaction_no,
+        "created": created_count,
+        "updated": updated_count,
+        "quantity": total_quantity,
+    }
 
 # ── 입출기록 조회 ──────────────────────────────────────
 @router.get("/history/all")
