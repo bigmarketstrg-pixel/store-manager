@@ -450,7 +450,11 @@ def stock_history(
         q = q.filter(StockHistory.record_date >= start)
     if end:
         q = q.filter(StockHistory.record_date <= end)
-    return q.order_by(StockHistory.record_date.desc()).all()
+    return q.order_by(
+        StockHistory.record_date.desc(),
+        StockHistory.created_at.desc(),
+        StockHistory.id.desc(),
+    ).all()
 
 @router.patch("/history/{history_id}")
 def update_stock_history(history_id: int, body: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
