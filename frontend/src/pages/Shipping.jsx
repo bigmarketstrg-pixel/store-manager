@@ -8,7 +8,7 @@ const BUSINESSES = ['다담', '훌라', '오아시스', '이양서', '이 외']
 export default function Shipping() {
   const [records, setRecords] = useState([])
   const [business, setBusiness] = useState('전체')
-  const [startMonth, setStartMonth] = useState(dayjs().format('YYYY-MM'))
+  const [startMonth, setStartMonth] = useState(dayjs().subtract(2, 'month').format('YYYY-MM'))
   const [endMonth, setEndMonth] = useState(dayjs().format('YYYY-MM'))
   const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
@@ -19,6 +19,16 @@ export default function Shipping() {
     setLoading(true)
     try {
       const params = { start: startMonth, end: endMonth }
+      if (business !== '전체') params.business = business
+      const r = await deliveryApi.list(params)
+      setRecords(r.data)
+    } finally { setLoading(false) }
+  }
+
+  const loadWithRange = async (nextStart, nextEnd) => {
+    setLoading(true)
+    try {
+      const params = { start: nextStart, end: nextEnd }
       if (business !== '전체') params.business = business
       const r = await deliveryApi.list(params)
       setRecords(r.data)
@@ -72,6 +82,8 @@ export default function Shipping() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>불러오는 중...</td></tr>
+              ) : records.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>택배비 기록이 없습니다</td></tr>
               ) : records.map(r => (
                 <tr key={r.id}>
                   <td style={{ fontSize: 12 }}>{r.delivery_date}</td>
@@ -96,7 +108,20 @@ export default function Shipping() {
         <DeliveryModal
           item={editItem}
           onClose={() => setShowModal(false)}
-          onSave={() => { setShowModal(false); load(); toast(editItem ? '수정 완료' : '등록 완료') }}
+          onSave={(savedDate) => {
+            let nextStart = startMonth
+            let nextEnd = endMonth
+            if (savedDate) {
+              const savedMonth = dayjs(savedDate).format('YYYY-MM')
+              if (savedMonth < nextStart) nextStart = savedMonth
+              if (savedMonth > nextEnd) nextEnd = savedMonth
+            }
+            setStartMonth(nextStart)
+            setEndMonth(nextEnd)
+            setShowModal(false)
+            loadWithRange(nextStart, nextEnd)
+            toast(editItem ? '수정 완료' : '등록 완료')
+          }}
           toast={toast}
         />
       )}
@@ -119,7 +144,7 @@ function DeliveryModal({ item, onClose, onSave, toast }) {
     try {
       if (item) await deliveryApi.update(item.id, form)
       else await deliveryApi.create(form)
-      onSave()
+      onSave(form.delivery_date)
     } catch (err) { toast(err.response?.data?.detail || '저장 실패', 'error') }
   }
 
