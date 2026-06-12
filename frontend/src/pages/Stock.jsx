@@ -20,8 +20,6 @@ export default function Stock() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editItem, setEditItem] = useState(null)
-  const [showInbound, setShowInbound] = useState(false)
-  const [inboundItem, setInboundItem] = useState(null)
   const [importing, setImporting] = useState(false)
   const fileInputRef = useRef(null)
   const importModeRef = useRef('merge')
@@ -50,7 +48,6 @@ export default function Stock() {
   useEffect(() => { load() }, [q, business, category, subcategory, brand, costMin, costMax, saleMin, saleMax])
 
   const openEdit = (item = null) => { setEditItem(item); setShowModal(true) }
-  const openInbound = (item) => { setInboundItem(item); setShowInbound(true) }
 
   const deleteProduct = async (item) => {
     if (!isAdmin) { toast('관리자만 삭제할 수 있습니다.', 'error'); return }
@@ -171,7 +168,7 @@ export default function Stock() {
   return (
     <div>
       <div className="flex-between" style={{ marginBottom: 20 }}>
-        <h1 className="page-title" style={{ margin: 0 }}>재고 관리</h1>
+        <h1 className="page-title" style={{ margin: 0 }}>재고 현황</h1>
         <div className="flex gap-8">
           <input
             ref={fileInputRef}
@@ -242,7 +239,6 @@ export default function Stock() {
                   <td style={{ fontSize: 12, color: 'var(--muted)' }}>{p.note}</td>
                   <td>
                     <div className="flex gap-8">
-                      <button className="btn btn-ghost btn-sm" onClick={() => openInbound(p)}>입고</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => openEdit(p)}>수정</button>
                       {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => deleteProduct(p)}>삭제</button>}
                     </div>
@@ -259,14 +255,6 @@ export default function Stock() {
           item={editItem}
           onClose={() => setShowModal(false)}
           onSave={() => { setShowModal(false); load(); toast(editItem ? '수정 완료' : '상품 추가 완료') }}
-          toast={toast}
-        />
-      )}
-      {showInbound && (
-        <InboundModal
-          item={inboundItem}
-          onClose={() => setShowInbound(false)}
-          onSave={() => { setShowInbound(false); load(); toast('입고 처리 완료') }}
           toast={toast}
         />
       )}
@@ -357,56 +345,6 @@ function ProductModal({ item, onClose, onSave, toast }) {
         <div className="flex gap-8 mt-24">
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>취소</button>
           <button className="btn btn-primary" style={{ flex: 2 }} onClick={save}>저장</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function InboundModal({ item, onClose, onSave, toast }) {
-  const [qty, setQty] = useState(1)
-  const [costPrice, setCostPrice] = useState(item?.cost_price || 0)
-  const [memo, setMemo] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-
-  const save = async () => {
-    try {
-      await productApi.inbound({ product_id: item.id, quantity: qty, cost_price: costPrice, record_date: date, memo })
-      onSave()
-    } catch (err) {
-      toast(err.response?.data?.detail || '입고 실패', 'error')
-    }
-  }
-
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <h2>입고 처리</h2>
-        <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--surface2)', borderRadius: 8 }}>
-          <div style={{ fontWeight: 600 }}>{item?.name}</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>현재 재고: {item?.stock}개</div>
-        </div>
-        <div className="grid-2" style={{ gap: 12 }}>
-          <div className="field">
-            <label>입고날짜</label>
-            <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>입고수량</label>
-            <input className="input" type="number" min={1} value={qty} onChange={e => setQty(+e.target.value)} />
-          </div>
-          <div className="field">
-            <label>단가</label>
-            <input className="input" type="number" value={costPrice} onChange={e => setCostPrice(+e.target.value)} />
-          </div>
-          <div className="field">
-            <label>메모</label>
-            <input className="input" value={memo} onChange={e => setMemo(e.target.value)} />
-          </div>
-        </div>
-        <div className="flex gap-8 mt-24">
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>취소</button>
-          <button className="btn btn-success" style={{ flex: 2 }} onClick={save}>입고 처리</button>
         </div>
       </div>
     </div>

@@ -4,6 +4,8 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import POS from './pages/POS'
 import Stock from './pages/Stock'
+import Inbound from './pages/Inbound'
+import Outbound from './pages/Outbound'
 import InOut from './pages/InOut'
 import SalesHistory from './pages/SalesHistory'
 import Wholesale from './pages/Wholesale'
@@ -31,6 +33,8 @@ export default function App() {
           <Route path="/sales" element={<PrivateRoute><SalesHistory /></PrivateRoute>} />
           <Route path="/wholesale" element={<PrivateRoute><Wholesale /></PrivateRoute>} />
           <Route path="/stock" element={<PrivateRoute><Stock /></PrivateRoute>} />
+          <Route path="/inbound" element={<PrivateRoute><Inbound /></PrivateRoute>} />
+          <Route path="/outbound" element={<PrivateRoute><Outbound /></PrivateRoute>} />
           <Route path="/inout" element={<PrivateRoute><InOut /></PrivateRoute>} />
           <Route path="/quote" element={<PrivateRoute><Documents /></PrivateRoute>} />
           <Route path="/delivery-note" element={<Navigate to="/quote" replace />} />

@@ -257,6 +257,17 @@ class BulkInboundCreate(BaseModel):
     transaction_no: Optional[str] = None
     items: list[BulkInboundItem]
 
+class BulkOutboundItem(BaseModel):
+    product_id: int
+    quantity: int
+
+class BulkOutboundCreate(BaseModel):
+    record_date: date
+    reason: str
+    memo: Optional[str] = None
+    transaction_no: Optional[str] = None
+    items: list[BulkOutboundItem]
+
 @router.post("/inbound")
 def inbound(body: InboundCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     p = db.query(Product).filter(Product.id == body.product_id).first()
@@ -370,6 +381,58 @@ def inbound_bulk(body: BulkInboundCreate, db: Session = Depends(get_db), user=De
         "updated": updated_count,
         "quantity": total_quantity,
     }
+
+@router.post("/outbound-bulk")
+def outbound_bulk(body: BulkOutboundCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if not body.items:
+        raise HTTPException(status_code=400, detail="출고할 품목을 입력해주세요.")
+
+    reason = clean_text(body.reason)
+    if not reason:
+        raise HTTPException(status_code=400, detail="출고 사유를 입력해주세요.")
+
+    transaction_no = body.transaction_no or f"OUT{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    total_quantity = 0
+
+    for item in body.items:
+        if item.quantity <= 0:
+            continue
+
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail=f"상품 ID {item.product_id}를 찾을 수 없습니다.")
+        if product.stock < item.quantity:
+            raise HTTPException(status_code=400, detail=f"{product.name} 재고 부족 (현재: {product.stock}개)")
+
+        product.stock -= item.quantity
+        memo_parts = [f"출고사유: {reason}"]
+        if body.memo:
+            memo_parts.append(body.memo)
+
+        history = StockHistory(
+            transaction_no=transaction_no,
+            record_date=body.record_date,
+            product_id=product.id,
+            product_name=product.name,
+            business=product.business,
+            category=product.category,
+            subcategory=product.subcategory,
+            brand=product.brand,
+            io_type="출고",
+            quantity=item.quantity,
+            cost_price=product.cost_price,
+            memo=" / ".join(memo_parts),
+            created_by=user.id
+        )
+        db.add(history)
+        total_quantity += item.quantity
+
+    if total_quantity == 0:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="출고할 수량이 있는 품목을 입력해주세요.")
+
+    db.commit()
+    return {"ok": True, "transaction_no": transaction_no, "quantity": total_quantity}
 
 # ── 입출기록 조회 ──────────────────────────────────────
 @router.get("/history/all")
