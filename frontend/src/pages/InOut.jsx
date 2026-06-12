@@ -134,7 +134,7 @@ export default function InOut() {
                       <tr
                         key={`${group.key}-${item.id}`}
                         onDoubleClick={() => setSelectedGroup(group)}
-                        style={{ background: 'rgba(255,255,255,.025)', cursor: 'pointer' }}
+                        style={{ background: '#fafafa', cursor: 'pointer' }}
                       >
                         <td className="center" style={{ color: 'var(--muted)' }}>{index === 0 ? '└' : ''}</td>
                         <td></td>
