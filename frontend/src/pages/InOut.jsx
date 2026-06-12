@@ -4,7 +4,17 @@ import { useToast } from '../hooks/useToast.jsx'
 import dayjs from 'dayjs'
 
 const BUSINESSES = ['전체', '다담', '훌라', '오아시스', '이 외']
-const emptyRow = () => ({ brand: '', product_name: '', quantity: 1, cost_price: 0 })
+const INBOUND_BUSINESSES = ['다담', '훌라']
+const emptyRow = () => ({
+  business: '다담',
+  category: '',
+  subcategory: '',
+  brand: '',
+  product_name: '',
+  quantity: 1,
+  cost_price: 0,
+  sale_price: 0,
+})
 
 export default function InOut() {
   const [records, setRecords] = useState([])
@@ -95,27 +105,70 @@ export default function InOut() {
 }
 
 function BulkInboundModal({ onClose, onSave, toast }) {
+  const [products, setProducts] = useState([])
   const [recordDate, setRecordDate] = useState(dayjs().format('YYYY-MM-DD'))
   const [supplierName, setSupplierName] = useState('')
   const [memo, setMemo] = useState('')
   const [rows, setRows] = useState([emptyRow()])
 
+  useEffect(() => {
+    productApi.list({})
+      .then(r => setProducts(r.data))
+      .catch(() => toast('상품 목록을 불러오지 못했습니다.', 'error'))
+  }, [])
+
   const setRow = (index, key, value) => {
     setRows(prev => prev.map((row, i) => i === index ? { ...row, [key]: value } : row))
+  }
+  const fillFromProduct = (row, product) => ({
+    ...row,
+    business: product.business || row.business,
+    category: product.category || '',
+    subcategory: product.subcategory || '',
+    brand: product.brand || '',
+    product_name: product.name,
+    cost_price: product.cost_price || 0,
+    sale_price: product.sale_price || 0,
+  })
+  const applyProduct = (index, name) => {
+    setRows(prev => prev.map((row, i) => {
+      if (i !== index) return row
+      const exact = products.find(p => p.name === name && p.business === row.business)
+        || products.find(p => p.name === name && INBOUND_BUSINESSES.includes(p.business))
+      if (!exact) return { ...row, product_name: name }
+      return fillFromProduct(row, exact)
+    }))
+  }
+  const changeBusiness = (index, business) => {
+    setRows(prev => prev.map((row, i) => {
+      if (i !== index) return row
+      const next = { ...row, business }
+      const exact = products.find(p => p.name === row.product_name && p.business === business)
+      return exact ? fillFromProduct(next, exact) : next
+    }))
   }
   const addRow = () => setRows(prev => [...prev, emptyRow()])
   const removeRow = (index) => setRows(prev => prev.filter((_, i) => i !== index))
   const amount = row => (Number(row.quantity) || 0) * (Number(row.cost_price) || 0)
   const totalAmount = rows.reduce((sum, row) => sum + amount(row), 0)
   const fmt = n => Math.round(Number(n) || 0).toLocaleString()
+  const inboundProducts = products.filter(p => INBOUND_BUSINESSES.includes(p.business))
+  const productNames = [...new Set(inboundProducts.map(p => p.name).filter(Boolean))].sort()
+  const categories = [...new Set(inboundProducts.map(p => p.category).filter(Boolean))].sort()
+  const subcategories = [...new Set(inboundProducts.map(p => p.subcategory).filter(Boolean))].sort()
+  const brands = [...new Set(inboundProducts.map(p => p.brand).filter(Boolean))].sort()
 
   const save = async () => {
     const items = rows
       .map(row => ({
         brand: row.brand.trim(),
+        business: row.business,
+        category: row.category.trim(),
+        subcategory: row.subcategory.trim(),
         product_name: row.product_name.trim(),
         quantity: Number(row.quantity) || 0,
         cost_price: Number(row.cost_price) || 0,
+        sale_price: Number(row.sale_price) || 0,
         amount: amount(row),
       }))
       .filter(row => row.product_name && row.quantity > 0)
@@ -157,13 +210,21 @@ function BulkInboundModal({ onClose, onSave, toast }) {
         </div>
 
         <div className="table-wrap" style={{ maxHeight: 360, overflow: 'auto' }}>
+          <datalist id="inbound-products">{productNames.map(v => <option key={v} value={v} />)}</datalist>
+          <datalist id="inbound-categories">{categories.map(v => <option key={v} value={v} />)}</datalist>
+          <datalist id="inbound-subcategories">{subcategories.map(v => <option key={v} value={v} />)}</datalist>
+          <datalist id="inbound-brands">{brands.map(v => <option key={v} value={v} />)}</datalist>
           <table>
             <thead>
               <tr>
+                <th>사업자</th>
+                <th>대분류</th>
+                <th>중분류</th>
                 <th>브랜드</th>
                 <th>품명</th>
                 <th className="num">수량</th>
                 <th className="num">단가</th>
+                <th className="num">판매가</th>
                 <th className="num">금액</th>
                 <th></th>
               </tr>
@@ -171,10 +232,18 @@ function BulkInboundModal({ onClose, onSave, toast }) {
             <tbody>
               {rows.map((row, i) => (
                 <tr key={i}>
-                  <td><input className="input" value={row.brand} onChange={e => setRow(i, 'brand', e.target.value)} placeholder="브랜드" /></td>
-                  <td><input className="input" value={row.product_name} onChange={e => setRow(i, 'product_name', e.target.value)} placeholder="품명" /></td>
+                  <td>
+                    <select className="input" value={row.business} onChange={e => changeBusiness(i, e.target.value)}>
+                      {INBOUND_BUSINESSES.map(b => <option key={b}>{b}</option>)}
+                    </select>
+                  </td>
+                  <td><input className="input" list="inbound-categories" value={row.category} onChange={e => setRow(i, 'category', e.target.value)} placeholder="대분류" /></td>
+                  <td><input className="input" list="inbound-subcategories" value={row.subcategory} onChange={e => setRow(i, 'subcategory', e.target.value)} placeholder="중분류" /></td>
+                  <td><input className="input" list="inbound-brands" value={row.brand} onChange={e => setRow(i, 'brand', e.target.value)} placeholder="브랜드" /></td>
+                  <td><input className="input" list="inbound-products" value={row.product_name} onChange={e => applyProduct(i, e.target.value)} placeholder="품명" /></td>
                   <td><input className="input" type="number" min={1} value={row.quantity} onChange={e => setRow(i, 'quantity', e.target.value)} style={{ textAlign: 'right' }} /></td>
                   <td><input className="input" type="number" min={0} value={row.cost_price} onChange={e => setRow(i, 'cost_price', e.target.value)} style={{ textAlign: 'right' }} /></td>
+                  <td><input className="input" type="number" min={0} value={row.sale_price} onChange={e => setRow(i, 'sale_price', e.target.value)} style={{ textAlign: 'right' }} /></td>
                   <td className="num fw-600">₩{fmt(amount(row))}</td>
                   <td>
                     {rows.length > 1 && <button className="btn btn-ghost btn-sm" onClick={() => removeRow(i)}>삭제</button>}

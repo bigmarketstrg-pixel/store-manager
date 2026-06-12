@@ -239,10 +239,14 @@ class InboundCreate(BaseModel):
     transaction_no: Optional[str] = None
 
 class BulkInboundItem(BaseModel):
+    business: str = "이 외"
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
     brand: Optional[str] = None
     product_name: str
     quantity: int
     cost_price: int = 0
+    sale_price: int = 0
     amount: Optional[int] = None
 
 class BulkInboundCreate(BaseModel):
@@ -295,7 +299,8 @@ def inbound_bulk(body: BulkInboundCreate, db: Session = Depends(get_db), user=De
         if not name or item.quantity <= 0:
             continue
 
-        query = db.query(Product).filter(Product.name == name)
+        business = clean_business(item.business)
+        query = db.query(Product).filter(Product.name == name, Product.business == business)
         brand = clean_text(item.brand, None)
         if brand:
             query = query.filter(Product.brand == brand)
@@ -304,10 +309,12 @@ def inbound_bulk(body: BulkInboundCreate, db: Session = Depends(get_db), user=De
         if not product:
             product = Product(
                 name=name,
-                business="이 외",
+                business=business,
+                category=clean_text(item.category, None),
+                subcategory=clean_text(item.subcategory, None),
                 brand=brand,
                 cost_price=item.cost_price or 0,
-                sale_price=0,
+                sale_price=item.sale_price or 0,
                 stock=0,
             )
             db.add(product)
@@ -317,8 +324,16 @@ def inbound_bulk(body: BulkInboundCreate, db: Session = Depends(get_db), user=De
             updated_count += 1
 
         product.stock += item.quantity
+        if item.category:
+            product.category = item.category
+        if item.subcategory:
+            product.subcategory = item.subcategory
+        if brand:
+            product.brand = brand
         if item.cost_price:
             product.cost_price = item.cost_price
+        if item.sale_price:
+            product.sale_price = item.sale_price
 
         amount = item.amount if item.amount is not None else (item.quantity * (item.cost_price or 0))
         memo_parts = [f"상호명: {body.supplier_name}", f"금액: {amount}", f"총액: {body.total_amount}"]
