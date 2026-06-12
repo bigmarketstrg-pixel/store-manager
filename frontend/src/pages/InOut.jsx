@@ -79,16 +79,16 @@ export default function InOut() {
           <table>
             <thead>
               <tr>
-                <th>날짜</th><th>거래번호</th><th>구분</th><th>품목</th>
+                <th style={{ width: 52 }}></th><th>날짜</th><th>거래번호</th><th>구분</th><th>품목</th>
                 <th>사업자</th><th>대분류</th><th>브랜드</th>
                 <th className="num">품목수</th><th className="num">총수량</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>불러오는 중...</td></tr>
+                <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>불러오는 중...</td></tr>
               ) : groupedRecords.length === 0 ? (
-                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>입출기록이 없습니다</td></tr>
+                <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>입출기록이 없습니다</td></tr>
               ) : groupedRecords.map(group => {
                 const first = group.items[0]
                 const itemCount = group.items.length
@@ -104,23 +104,22 @@ export default function InOut() {
                         background: itemCount > 1 ? 'rgba(79,142,247,.06)' : undefined,
                       }}
                     >
-                      <td style={{ fontSize: 12 }}>{group.record_date}</td>
-                      <td style={{ fontSize: 11, color: 'var(--muted)' }}>
-                        <div className="flex gap-8">
-                          {itemCount > 1 ? (
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              onClick={(e) => { e.stopPropagation(); toggleExpanded(group.key) }}
-                              style={{ width: 30, padding: '4px 0' }}
-                            >
-                              {isExpanded ? '-' : '+'}
-                            </button>
-                          ) : (
-                            <span style={{ width: 30 }} />
-                          )}
-                          <span>{group.transaction_no}</span>
-                        </div>
+                      <td className="center">
+                        {itemCount > 1 ? (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={(e) => { e.stopPropagation(); toggleExpanded(group.key) }}
+                            style={{ width: 30, height: 28, padding: 0, fontWeight: 700 }}
+                            title={isExpanded ? '접기' : '펼치기'}
+                          >
+                            {isExpanded ? '-' : '+'}
+                          </button>
+                        ) : (
+                          <span style={{ color: 'var(--muted)' }}>-</span>
+                        )}
                       </td>
+                      <td style={{ fontSize: 12 }}>{group.record_date}</td>
+                      <td style={{ fontSize: 11, color: 'var(--muted)' }}>{group.transaction_no}</td>
                       <td>
                         <span className={`badge ${group.io_type === '입고' ? 'badge-green' : 'badge-red'}`}>{group.io_type}</span>
                       </td>
@@ -137,8 +136,9 @@ export default function InOut() {
                         onDoubleClick={() => setSelectedGroup(group)}
                         style={{ background: 'rgba(255,255,255,.025)', cursor: 'pointer' }}
                       >
-                        <td style={{ fontSize: 12, color: 'var(--muted)' }}>{index === 0 ? '└' : ' '}</td>
-                        <td style={{ fontSize: 11, color: 'var(--muted)', paddingLeft: 54 }}></td>
+                        <td className="center" style={{ color: 'var(--muted)' }}>{index === 0 ? '└' : ''}</td>
+                        <td></td>
+                        <td style={{ fontSize: 11, color: 'var(--muted)' }}></td>
                         <td></td>
                         <td style={{ fontWeight: 500, paddingLeft: 28 }}>{item.product_name}</td>
                         <td><span className="badge badge-blue">{item.business}</span></td>
