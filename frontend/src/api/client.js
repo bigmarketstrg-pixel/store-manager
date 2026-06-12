@@ -46,6 +46,7 @@ export const productApi = {
   inboundBulk: (data) => api.post('/api/products/inbound-bulk', data),
   importDb: (form) => api.post('/api/products/import-db', form),
   history: (params) => api.get('/api/products/history/all', { params }),
+  updateHistory: (id, data) => api.patch(`/api/products/history/${id}`, data),
 }
 
 export const saleApi = {

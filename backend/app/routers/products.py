@@ -388,3 +388,50 @@ def stock_history(
     if end:
         q = q.filter(StockHistory.record_date <= end)
     return q.order_by(StockHistory.record_date.desc()).all()
+
+@router.patch("/history/{history_id}")
+def update_stock_history(history_id: int, body: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    history = db.query(StockHistory).filter(StockHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="입출기록을 찾을 수 없습니다.")
+
+    old_io_type = history.io_type
+    old_quantity = history.quantity or 0
+    next_io_type = body.get("io_type", old_io_type)
+    next_quantity = int(body.get("quantity", old_quantity) or 0)
+    if next_quantity < 0:
+        raise HTTPException(status_code=400, detail="수량은 0보다 작을 수 없습니다.")
+    if next_io_type not in ("입고", "출고"):
+        raise HTTPException(status_code=400, detail="구분은 입고 또는 출고만 가능합니다.")
+
+    product = db.query(Product).filter(Product.id == history.product_id).first() if history.product_id else None
+    if product and (old_io_type != next_io_type or old_quantity != next_quantity):
+        if old_io_type == "입고":
+            product.stock -= old_quantity
+        elif old_io_type == "출고":
+            product.stock += old_quantity
+
+        if next_io_type == "입고":
+            product.stock += next_quantity
+        else:
+            if product.stock < next_quantity:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=f"{product.name} 재고 부족 (현재: {product.stock}개)")
+            product.stock -= next_quantity
+        if product.stock < 0:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=f"{product.name} 재고가 부족해 수정할 수 없습니다.")
+
+    allowed = {
+        "transaction_no", "record_date", "product_name", "business", "category",
+        "subcategory", "brand", "io_type", "quantity", "cost_price", "memo"
+    }
+    for key, value in body.items():
+        if key in allowed:
+            if key == "record_date" and isinstance(value, str):
+                value = date.fromisoformat(value)
+            setattr(history, key, value)
+
+    db.commit()
+    db.refresh(history)
+    return history
