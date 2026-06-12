@@ -11,7 +11,7 @@ export default function InOut() {
   const [start, setStart] = useState(dayjs().subtract(30, 'day').format('YYYY-MM-DD'))
   const [end, setEnd] = useState(dayjs().format('YYYY-MM-DD'))
   const [loading, setLoading] = useState(false)
-  const [selectedRecord, setSelectedRecord] = useState(null)
+  const [selectedGroup, setSelectedGroup] = useState(null)
   const { toast, ToastContainer } = useToast()
 
   const load = async () => {
@@ -27,6 +27,30 @@ export default function InOut() {
   }
 
   useEffect(() => { load() }, [])
+
+  const groupedRecords = Array.from(records.reduce((map, record) => {
+    const key = `${record.record_date}|${record.transaction_no || record.id}|${record.io_type}`
+    const group = map.get(key)
+    if (group) {
+      group.items.push(record)
+      group.quantity += record.quantity || 0
+      return map
+    }
+    map.set(key, {
+      key,
+      record_date: record.record_date,
+      transaction_no: record.transaction_no,
+      io_type: record.io_type,
+      items: [record],
+      quantity: record.quantity || 0,
+    })
+    return map
+  }, new Map()).values())
+
+  const sameValue = (items, key) => {
+    const values = [...new Set(items.map(item => item[key]).filter(Boolean))]
+    return values.length === 1 ? values[0] : values.length > 1 ? '여러 항목' : ''
+  }
 
   return (
     <div>
@@ -51,43 +75,48 @@ export default function InOut() {
           <table>
             <thead>
               <tr>
-                <th>날짜</th><th>거래번호</th><th>구분</th><th>상품명</th>
+                <th>날짜</th><th>거래번호</th><th>구분</th><th>품목</th>
                 <th>사업자</th><th>대분류</th><th>브랜드</th>
-                <th className="num">수량</th><th className="num">단가</th>
+                <th className="num">품목수</th><th className="num">총수량</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>불러오는 중...</td></tr>
-              ) : records.length === 0 ? (
+              ) : groupedRecords.length === 0 ? (
                 <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>입출기록이 없습니다</td></tr>
-              ) : records.map(r => (
-                <tr key={r.id} onDoubleClick={() => setSelectedRecord(r)} style={{ cursor: 'pointer' }}>
-                  <td style={{ fontSize: 12 }}>{r.record_date}</td>
-                  <td style={{ fontSize: 11, color: 'var(--muted)' }}>{r.transaction_no}</td>
+              ) : groupedRecords.map(group => {
+                const first = group.items[0]
+                const itemCount = group.items.length
+                const productLabel = itemCount === 1 ? first.product_name : `${first.product_name} 외 ${itemCount - 1}개`
+                return (
+                <tr key={group.key} onDoubleClick={() => setSelectedGroup(group)} style={{ cursor: 'pointer' }}>
+                  <td style={{ fontSize: 12 }}>{group.record_date}</td>
+                  <td style={{ fontSize: 11, color: 'var(--muted)' }}>{group.transaction_no}</td>
                   <td>
-                    <span className={`badge ${r.io_type === '입고' ? 'badge-green' : 'badge-red'}`}>{r.io_type}</span>
+                    <span className={`badge ${group.io_type === '입고' ? 'badge-green' : 'badge-red'}`}>{group.io_type}</span>
                   </td>
-                  <td style={{ fontWeight: 500 }}>{r.product_name}</td>
-                  <td><span className="badge badge-blue">{r.business}</span></td>
-                  <td style={{ fontSize: 12 }}>{r.category}</td>
-                  <td style={{ fontSize: 12 }}>{r.brand}</td>
-                  <td className="num">{r.quantity}</td>
-                  <td className="num">₩{r.cost_price?.toLocaleString()}</td>
+                  <td style={{ fontWeight: 500 }}>{productLabel}</td>
+                  <td><span className="badge badge-blue">{sameValue(group.items, 'business')}</span></td>
+                  <td style={{ fontSize: 12 }}>{sameValue(group.items, 'category')}</td>
+                  <td style={{ fontSize: 12 }}>{sameValue(group.items, 'brand')}</td>
+                  <td className="num">{itemCount}</td>
+                  <td className="num">{group.quantity}</td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {selectedRecord && (
-        <HistoryDetailModal
-          record={selectedRecord}
-          onClose={() => setSelectedRecord(null)}
-          onSave={(updated) => {
-            setRecords(prev => prev.map(r => r.id === updated.id ? updated : r))
-            setSelectedRecord(null)
+      {selectedGroup && (
+        <HistoryGroupModal
+          group={selectedGroup}
+          onClose={() => setSelectedGroup(null)}
+          onSave={(updatedRows) => {
+            setRecords(prev => prev.map(record => updatedRows.find(updated => updated.id === record.id) || record))
+            setSelectedGroup(null)
             toast('입출기록 수정 완료')
           }}
           toast={toast}
@@ -98,8 +127,9 @@ export default function InOut() {
   )
 }
 
-function HistoryDetailModal({ record, onClose, onSave, toast }) {
-  const [form, setForm] = useState({
+function HistoryGroupModal({ group, onClose, onSave, toast }) {
+  const [forms, setForms] = useState(group.items.map(record => ({
+    id: record.id,
     record_date: record.record_date || '',
     transaction_no: record.transaction_no || '',
     io_type: record.io_type || '입고',
@@ -111,18 +141,25 @@ function HistoryDetailModal({ record, onClose, onSave, toast }) {
     quantity: record.quantity || 0,
     cost_price: record.cost_price || 0,
     memo: record.memo || '',
-  })
-  const set = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+  })))
+  const set = (index, key, value) => {
+    setForms(prev => prev.map((form, i) => i === index ? { ...form, [key]: value } : form))
+  }
 
   const save = async () => {
     try {
-      const payload = {
-        ...form,
-        quantity: Number(form.quantity) || 0,
-        cost_price: Number(form.cost_price) || 0,
+      const updatedRows = []
+      for (const form of forms) {
+        const payload = {
+          ...form,
+          quantity: Number(form.quantity) || 0,
+          cost_price: Number(form.cost_price) || 0,
+        }
+        delete payload.id
+        const r = await productApi.updateHistory(form.id, payload)
+        updatedRows.push(r.data)
       }
-      const r = await productApi.updateHistory(record.id, payload)
-      onSave(r.data)
+      onSave(updatedRows)
     } catch (err) {
       toast(err.response?.data?.detail || '입출기록 수정 실패', 'error')
     }
@@ -130,59 +167,63 @@ function HistoryDetailModal({ record, onClose, onSave, toast }) {
 
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal" style={{ width: 760 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ width: 'min(1180px, 96vw)' }} onClick={e => e.stopPropagation()}>
         <h2>입출기록 상세</h2>
-        <div className="grid-3" style={{ gap: 12 }}>
-          <div className="field">
-            <label>날짜</label>
-            <input className="input" type="date" value={form.record_date} onChange={e => set('record_date', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>거래번호</label>
-            <input className="input" value={form.transaction_no} onChange={e => set('transaction_no', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>구분</label>
-            <select className="input" value={form.io_type} onChange={e => set('io_type', e.target.value)}>
-              <option>입고</option>
-              <option>출고</option>
-            </select>
-          </div>
-          <div className="field" style={{ gridColumn: '1/-1' }}>
-            <label>상품명</label>
-            <input className="input" value={form.product_name} onChange={e => set('product_name', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>사업자</label>
-            <select className="input" value={form.business} onChange={e => set('business', e.target.value)}>
-              {BUSINESSES.filter(b => b !== '전체').map(b => <option key={b}>{b}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label>대분류</label>
-            <input className="input" value={form.category} onChange={e => set('category', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>중분류</label>
-            <input className="input" value={form.subcategory} onChange={e => set('subcategory', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>브랜드</label>
-            <input className="input" value={form.brand} onChange={e => set('brand', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>수량</label>
-            <input className="input" type="number" value={form.quantity} onChange={e => set('quantity', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>단가</label>
-            <input className="input" type="number" value={form.cost_price} onChange={e => set('cost_price', e.target.value)} />
-          </div>
-          <div className="field" style={{ gridColumn: '1/-1' }}>
-            <label>메모</label>
-            <textarea className="input" value={form.memo} onChange={e => set('memo', e.target.value)} rows={4} />
-          </div>
+        <div style={{ marginBottom: 16, color: 'var(--muted)', fontSize: 13 }}>
+          {group.record_date} · {group.transaction_no} · {group.items.length}개 품목
         </div>
+
+        <div className="table-wrap" style={{ maxHeight: 420, overflow: 'auto' }}>
+          <table style={{ minWidth: 1080, tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: 120 }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: 86 }} />
+              <col style={{ width: 220 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: 80 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 220 }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>날짜</th><th>거래번호</th><th>구분</th><th>상품명</th><th>사업자</th>
+                <th>대분류</th><th>중분류</th><th>브랜드</th>
+                <th className="num">수량</th><th className="num">단가</th><th>메모</th>
+              </tr>
+            </thead>
+            <tbody>
+              {forms.map((form, index) => (
+                <tr key={form.id}>
+                  <td><input className="input" type="date" value={form.record_date} onChange={e => set(index, 'record_date', e.target.value)} /></td>
+                  <td><input className="input" value={form.transaction_no} onChange={e => set(index, 'transaction_no', e.target.value)} /></td>
+                  <td>
+                    <select className="input" value={form.io_type} onChange={e => set(index, 'io_type', e.target.value)}>
+                      <option>입고</option>
+                      <option>출고</option>
+                    </select>
+                  </td>
+                  <td><input className="input" value={form.product_name} onChange={e => set(index, 'product_name', e.target.value)} /></td>
+                  <td>
+                    <select className="input" value={form.business} onChange={e => set(index, 'business', e.target.value)}>
+                      {BUSINESSES.filter(b => b !== '전체').map(b => <option key={b}>{b}</option>)}
+                    </select>
+                  </td>
+                  <td><input className="input" value={form.category} onChange={e => set(index, 'category', e.target.value)} /></td>
+                  <td><input className="input" value={form.subcategory} onChange={e => set(index, 'subcategory', e.target.value)} /></td>
+                  <td><input className="input" value={form.brand} onChange={e => set(index, 'brand', e.target.value)} /></td>
+                  <td><input className="input" type="number" value={form.quantity} onChange={e => set(index, 'quantity', e.target.value)} style={{ textAlign: 'right' }} /></td>
+                  <td><input className="input" type="number" value={form.cost_price} onChange={e => set(index, 'cost_price', e.target.value)} style={{ textAlign: 'right' }} /></td>
+                  <td><input className="input" value={form.memo} onChange={e => set(index, 'memo', e.target.value)} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
         <div className="flex gap-8 mt-24">
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>닫기</button>
           <button className="btn btn-primary" style={{ flex: 2 }} onClick={save}>수정 저장</button>
