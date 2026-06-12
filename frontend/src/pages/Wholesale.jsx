@@ -48,7 +48,6 @@ export default function Wholesale() {
     try {
       const params = { start, end }
       if (dealerFilter.trim()) params.dealer_name = dealerFilter.trim()
-      if (statusFilter !== '전체') params.payment_status_filter = statusFilter
       const r = await wholesaleApi.list(params)
       setRecords(r.data)
     } catch (err) {
@@ -168,9 +167,19 @@ export default function Wholesale() {
     }
   }
 
-  const summaryTotal = records.reduce((sum, record) => sum + record.total, 0)
-  const summaryPaid = records.reduce((sum, record) => sum + record.paid_amount, 0)
-  const summaryBalance = records.reduce((sum, record) => sum + record.balance, 0)
+  const visibleRecords = statusFilter === '전체'
+    ? records
+    : records.filter(record => record.payment_status === statusFilter)
+  const summaryTotal = visibleRecords.reduce((sum, record) => sum + record.total, 0)
+  const summaryPaid = visibleRecords.reduce((sum, record) => sum + record.paid_amount, 0)
+  const summaryBalance = visibleRecords.reduce((sum, record) => sum + record.balance, 0)
+  const statusSummary = (status) => {
+    const rows = status === '전체' ? records : records.filter(record => record.payment_status === status)
+    return {
+      count: rows.length,
+      balance: rows.reduce((sum, record) => sum + record.balance, 0),
+    }
+  }
 
   return (
     <div>
@@ -269,15 +278,32 @@ export default function Wholesale() {
           <span style={{ alignSelf: 'center', color: 'var(--muted)' }}>~</span>
           <input className="input" type="date" value={end} onChange={e => setEnd(e.target.value)} style={{ width: 150 }} />
           <input className="input" value={dealerFilter} onChange={e => setDealerFilter(e.target.value)} placeholder="도매처 검색" style={{ width: 170 }} />
-          <select className="input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ width: 120 }}>
-            {STATUSES.map(status => <option key={status}>{status}</option>)}
-          </select>
           <button className="btn btn-primary" onClick={load}>조회</button>
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: 16, padding: 12 }}>
+        <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
+          {STATUSES.map(status => {
+            const item = statusSummary(status)
+            const active = statusFilter === status
+            return (
+              <button
+                key={status}
+                className={`btn ${active ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setStatusFilter(status)}
+                style={{ minWidth: 145, justifyContent: 'space-between' }}
+              >
+                <span>{status}</span>
+                <span style={{ opacity: .85 }}>{item.count}건 · ₩{fmt(item.balance)}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       <div style={{ marginBottom: 12, color: 'var(--muted)', fontSize: 13 }}>
-        총 {records.length}건 · 출고 <span style={{ color: 'var(--accent)', fontWeight: 700 }}>₩{fmt(summaryTotal)}</span>
+        총 {visibleRecords.length}건 · 출고 <span style={{ color: 'var(--accent)', fontWeight: 700 }}>₩{fmt(summaryTotal)}</span>
         {' '}· 입금 <span style={{ color: 'var(--green)', fontWeight: 700 }}>₩{fmt(summaryPaid)}</span>
         {' '}· 미수 <span style={{ color: summaryBalance ? 'var(--red)' : 'var(--muted)', fontWeight: 700 }}>₩{fmt(summaryBalance)}</span>
       </div>
@@ -295,9 +321,9 @@ export default function Wholesale() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>불러오는 중...</td></tr>
-              ) : records.length === 0 ? (
+              ) : visibleRecords.length === 0 ? (
                 <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>도매 출고 기록이 없습니다</td></tr>
-              ) : records.map(record => (
+              ) : visibleRecords.map(record => (
                 <tr key={record.id}>
                   <td style={{ fontSize: 12 }}>{record.outbound_date}</td>
                   <td style={{ fontSize: 11, color: 'var(--muted)' }}>{record.transaction_no}</td>
