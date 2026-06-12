@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { productApi } from '../api/client'
 import { useToast } from '../hooks/useToast.jsx'
+import * as XLSX from 'xlsx'
 
 const BUSINESSES = ['전체', '다담', '훌라', '오아시스', '이 외']
 
@@ -100,6 +101,56 @@ export default function Stock() {
     }
   }
 
+  const exportExcel = () => {
+    if (products.length === 0) {
+      toast('내보낼 재고가 없습니다.', 'error')
+      return
+    }
+
+    const rows = products.map((p, idx) => ({
+      No: idx + 1,
+      상품명: p.name || '',
+      사업자: p.business || '',
+      대분류: p.category || '',
+      중분류: p.subcategory || '',
+      브랜드: p.brand || '',
+      상품코드: p.product_code || '',
+      단가: p.cost_price || 0,
+      판매가: p.sale_price || 0,
+      재고: p.stock || 0,
+      비고: p.note || '',
+      메모: p.memo || '',
+    }))
+    const sheet = XLSX.utils.json_to_sheet(rows)
+    sheet['!cols'] = [
+      { wch: 6 },
+      { wch: 32 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 24 },
+      { wch: 28 },
+    ]
+    const book = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(book, sheet, '재고')
+
+    const filterLabel = [
+      business !== '전체' ? business : '전체',
+      category || '',
+      subcategory || '',
+      brand || '',
+      q || '',
+    ].filter(Boolean).join('_')
+    const safeLabel = filterLabel.replace(/[\\/:*?"<>|]/g, '-')
+    const date = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(book, `재고목록_${safeLabel || '전체'}_${date}.xlsx`)
+  }
+
   const fmt = n => n?.toLocaleString() || '0'
 
   return (
@@ -119,6 +170,9 @@ export default function Stock() {
           </button>
           <button className="btn btn-danger" disabled={importing} onClick={() => startImport('replace')}>
             DB 전체교체
+          </button>
+          <button className="btn btn-ghost" disabled={loading || products.length === 0} onClick={exportExcel}>
+            엑셀 다운로드
           </button>
           <button className="btn btn-primary" onClick={() => openEdit(null)}>+ 상품 추가</button>
         </div>
