@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import dayjs from 'dayjs'
 import { productApi } from '../api/client'
 import { useToast } from '../hooks/useToast.jsx'
@@ -12,6 +12,7 @@ export default function InOut() {
   const [end, setEnd] = useState(dayjs().format('YYYY-MM-DD'))
   const [loading, setLoading] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState(null)
+  const [expandedKeys, setExpandedKeys] = useState({})
   const { toast, ToastContainer } = useToast()
 
   const load = async () => {
@@ -51,6 +52,9 @@ export default function InOut() {
     const values = [...new Set(items.map(item => item[key]).filter(Boolean))]
     return values.length === 1 ? values[0] : values.length > 1 ? '여러 항목' : ''
   }
+  const toggleExpanded = (key) => {
+    setExpandedKeys(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   return (
     <div>
@@ -88,21 +92,63 @@ export default function InOut() {
               ) : groupedRecords.map(group => {
                 const first = group.items[0]
                 const itemCount = group.items.length
+                const isExpanded = !!expandedKeys[group.key]
                 const productLabel = itemCount === 1 ? first.product_name : `${first.product_name} 외 ${itemCount - 1}개`
                 return (
-                <tr key={group.key} onDoubleClick={() => setSelectedGroup(group)} style={{ cursor: 'pointer' }}>
-                  <td style={{ fontSize: 12 }}>{group.record_date}</td>
-                  <td style={{ fontSize: 11, color: 'var(--muted)' }}>{group.transaction_no}</td>
-                  <td>
-                    <span className={`badge ${group.io_type === '입고' ? 'badge-green' : 'badge-red'}`}>{group.io_type}</span>
-                  </td>
-                  <td style={{ fontWeight: 500 }}>{productLabel}</td>
-                  <td><span className="badge badge-blue">{sameValue(group.items, 'business')}</span></td>
-                  <td style={{ fontSize: 12 }}>{sameValue(group.items, 'category')}</td>
-                  <td style={{ fontSize: 12 }}>{sameValue(group.items, 'brand')}</td>
-                  <td className="num">{itemCount}</td>
-                  <td className="num">{group.quantity}</td>
-                </tr>
+                  <Fragment key={group.key}>
+                    <tr
+                      key={group.key}
+                      onDoubleClick={() => setSelectedGroup(group)}
+                      style={{
+                        cursor: 'pointer',
+                        background: itemCount > 1 ? 'rgba(79,142,247,.06)' : undefined,
+                      }}
+                    >
+                      <td style={{ fontSize: 12 }}>{group.record_date}</td>
+                      <td style={{ fontSize: 11, color: 'var(--muted)' }}>
+                        <div className="flex gap-8">
+                          {itemCount > 1 ? (
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={(e) => { e.stopPropagation(); toggleExpanded(group.key) }}
+                              style={{ width: 30, padding: '4px 0' }}
+                            >
+                              {isExpanded ? '-' : '+'}
+                            </button>
+                          ) : (
+                            <span style={{ width: 30 }} />
+                          )}
+                          <span>{group.transaction_no}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge ${group.io_type === '입고' ? 'badge-green' : 'badge-red'}`}>{group.io_type}</span>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{productLabel}</td>
+                      <td><span className="badge badge-blue">{sameValue(group.items, 'business')}</span></td>
+                      <td style={{ fontSize: 12 }}>{sameValue(group.items, 'category')}</td>
+                      <td style={{ fontSize: 12 }}>{sameValue(group.items, 'brand')}</td>
+                      <td className="num">{itemCount}</td>
+                      <td className="num">{group.quantity}</td>
+                    </tr>
+                    {isExpanded && group.items.map((item, index) => (
+                      <tr
+                        key={`${group.key}-${item.id}`}
+                        onDoubleClick={() => setSelectedGroup(group)}
+                        style={{ background: 'rgba(255,255,255,.025)', cursor: 'pointer' }}
+                      >
+                        <td style={{ fontSize: 12, color: 'var(--muted)' }}>{index === 0 ? '└' : ' '}</td>
+                        <td style={{ fontSize: 11, color: 'var(--muted)', paddingLeft: 54 }}></td>
+                        <td></td>
+                        <td style={{ fontWeight: 500, paddingLeft: 28 }}>{item.product_name}</td>
+                        <td><span className="badge badge-blue">{item.business}</span></td>
+                        <td style={{ fontSize: 12 }}>{item.category}</td>
+                        <td style={{ fontSize: 12 }}>{item.brand}</td>
+                        <td className="num">1</td>
+                        <td className="num">{item.quantity}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 )
               })}
             </tbody>
