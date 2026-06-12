@@ -8,8 +8,8 @@ const BUSINESSES = ['다담', '훌라', '오아시스', '이양서', '이 외']
 export default function Shipping() {
   const [records, setRecords] = useState([])
   const [business, setBusiness] = useState('전체')
-  const [startMonth, setStartMonth] = useState(dayjs().subtract(2, 'month').format('YYYY-MM'))
-  const [endMonth, setEndMonth] = useState(dayjs().format('YYYY-MM'))
+  const [startDate, setStartDate] = useState(dayjs().startOf('month').format('YYYY-MM-DD'))
+  const [endDate, setEndDate] = useState(dayjs().endOf('month').format('YYYY-MM-DD'))
   const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editItem, setEditItem] = useState(null)
@@ -18,7 +18,7 @@ export default function Shipping() {
   const load = async () => {
     setLoading(true)
     try {
-      const params = { start: startMonth, end: endMonth }
+      const params = { start: startDate, end: endDate }
       if (business !== '전체') params.business = business
       const r = await deliveryApi.list(params)
       setRecords(r.data)
@@ -57,9 +57,9 @@ export default function Shipping() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-          <input type="month" className="input" value={startMonth} onChange={e => setStartMonth(e.target.value)} style={{ width: 150 }} />
+          <input type="date" className="input" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ width: 150 }} />
           <span style={{ alignSelf: 'center', color: 'var(--muted)' }}>~</span>
-          <input type="month" className="input" value={endMonth} onChange={e => setEndMonth(e.target.value)} style={{ width: 150 }} />
+          <input type="date" className="input" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: 150 }} />
           <select className="input" value={business} onChange={e => setBusiness(e.target.value)} style={{ width: 120 }}>
             {['전체', ...BUSINESSES].map(b => <option key={b}>{b}</option>)}
           </select>
@@ -109,15 +109,14 @@ export default function Shipping() {
           item={editItem}
           onClose={() => setShowModal(false)}
           onSave={(savedDate) => {
-            let nextStart = startMonth
-            let nextEnd = endMonth
+            let nextStart = startDate
+            let nextEnd = endDate
             if (savedDate) {
-              const savedMonth = dayjs(savedDate).format('YYYY-MM')
-              if (savedMonth < nextStart) nextStart = savedMonth
-              if (savedMonth > nextEnd) nextEnd = savedMonth
+              if (savedDate < nextStart) nextStart = savedDate
+              if (savedDate > nextEnd) nextEnd = savedDate
             }
-            setStartMonth(nextStart)
-            setEndMonth(nextEnd)
+            setStartDate(nextStart)
+            setEndDate(nextEnd)
             setShowModal(false)
             loadWithRange(nextStart, nextEnd)
             toast(editItem ? '수정 완료' : '등록 완료')

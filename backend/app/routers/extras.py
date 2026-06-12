@@ -40,9 +40,9 @@ def list_deliveries(
     if business:
         q = q.filter(Delivery.business == business)
     if start:
-        q = q.filter(Delivery.delivery_date >= f"{start}-01")
+        q = q.filter(Delivery.delivery_date >= start)
     if end:
-        q = q.filter(Delivery.delivery_date <= f"{end}-31")
+        q = q.filter(Delivery.delivery_date <= end)
     return q.order_by(Delivery.delivery_date.desc()).all()
 
 @delivery_router.post("", response_model=DeliveryOut)
