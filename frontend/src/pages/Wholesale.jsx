@@ -9,39 +9,16 @@ const STATUSES = ['전체', '미수', '일부입금', '완납']
 export default function Wholesale() {
   const { user } = useAuth()
   const { toast, ToastContainer } = useToast()
-  const searchRef = useRef()
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState([])
-  const [cart, setCart] = useState([])
-  const [dealerName, setDealerName] = useState('')
-  const [outboundDate, setOutboundDate] = useState(dayjs().format('YYYY-MM-DD'))
-  const [paidAmount, setPaidAmount] = useState(0)
-  const [memo, setMemo] = useState('')
   const [records, setRecords] = useState([])
   const [start, setStart] = useState(dayjs().startOf('month').format('YYYY-MM-DD'))
   const [end, setEnd] = useState(dayjs().endOf('month').format('YYYY-MM-DD'))
   const [dealerFilter, setDealerFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('전체')
   const [loading, setLoading] = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
 
   const isAdmin = user?.role === 'admin'
-  const total = cart.reduce((sum, item) => sum + item.sale_price * item.quantity, 0)
-  const balance = Math.max(total - paidAmount, 0)
   const fmt = n => Number(n || 0).toLocaleString()
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (query.trim().length < 1) {
-        setResults([])
-        return
-      }
-      try {
-        const r = await productApi.list({ q: query })
-        setResults(r.data)
-      } catch {}
-    }, 200)
-    return () => clearTimeout(timer)
-  }, [query])
 
   const load = async () => {
     setLoading(true)
@@ -58,86 +35,6 @@ export default function Wholesale() {
   }
 
   useEffect(() => { load() }, [])
-
-  const addToCart = (product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.product_id === product.id)
-      if (existing) {
-        if (existing.quantity >= product.stock) {
-          toast(`재고 부족 (현재 ${product.stock}개)`, 'error')
-          return prev
-        }
-        return prev.map(item => item.product_id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
-      }
-      if (product.stock < 1) {
-        toast('재고가 없습니다', 'error')
-        return prev
-      }
-      return [...prev, {
-        product_id: product.id,
-        name: product.name,
-        business: product.business,
-        brand: product.brand,
-        sale_price: product.sale_price,
-        quantity: 1,
-        max_stock: product.stock,
-      }]
-    })
-    setQuery('')
-    setResults([])
-    searchRef.current?.focus()
-  }
-
-  const updateQty = (productId, delta) => {
-    setCart(prev => prev.map(item => {
-      if (item.product_id !== productId) return item
-      const next = item.quantity + delta
-      if (next < 1) return null
-      if (next > item.max_stock) {
-        toast(`최대 ${item.max_stock}개까지 가능`, 'error')
-        return item
-      }
-      return { ...item, quantity: next }
-    }).filter(Boolean))
-  }
-
-  const setPrice = (productId, value) => {
-    const price = parseInt(String(value).replace(/,/g, ''), 10)
-    if (Number.isNaN(price)) return
-    setCart(prev => prev.map(item => item.product_id === productId ? { ...item, sale_price: price } : item))
-  }
-
-  const save = async () => {
-    if (!dealerName.trim()) {
-      toast('도매처명을 입력해주세요.', 'error')
-      return
-    }
-    if (cart.length === 0) {
-      toast('출고할 상품을 추가해주세요.', 'error')
-      return
-    }
-    try {
-      const r = await wholesaleApi.create({
-        outbound_date: outboundDate,
-        dealer_name: dealerName.trim(),
-        paid_amount: Math.min(Number(paidAmount || 0), total),
-        memo,
-        items: cart.map(item => ({
-          product_id: item.product_id,
-          sale_price: item.sale_price,
-          quantity: item.quantity,
-        })),
-      })
-      setRecords(prev => [r.data, ...prev])
-      setCart([])
-      setPaidAmount(0)
-      setMemo('')
-      toast('도매 출고 등록 완료')
-      searchRef.current?.focus()
-    } catch (err) {
-      toast(err.response?.data?.detail || '도매 출고 등록 실패', 'error')
-    }
-  }
 
   const updatePayment = async (record) => {
     const value = prompt('입금액을 입력하세요.', String(record.paid_amount || 0))
@@ -185,91 +82,7 @@ export default function Wholesale() {
     <div>
       <div className="flex-between" style={{ marginBottom: 20 }}>
         <h1 className="page-title" style={{ margin: 0 }}>도매처 출고 관리</h1>
-      </div>
-
-      <div className="pos-layout" style={{ marginBottom: 20 }}>
-        <div className="pos-left">
-          <div className="card">
-            <div className="card-title">출고 정보</div>
-            <div className="grid-3" style={{ gap: 12 }}>
-              <div className="field">
-                <label>출고일</label>
-                <input className="input" type="date" value={outboundDate} onChange={e => setOutboundDate(e.target.value)} />
-              </div>
-              <div className="field">
-                <label>도매처</label>
-                <input className="input" value={dealerName} onChange={e => setDealerName(e.target.value)} placeholder="도매처명" />
-              </div>
-              <div className="field">
-                <label>메모</label>
-                <input className="input" value={memo} onChange={e => setMemo(e.target.value)} placeholder="선택 입력" />
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-title">상품 검색</div>
-            <input
-              ref={searchRef}
-              className="input input-lg"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="상품명 입력..."
-            />
-            {results.length > 0 && (
-              <div className="pos-search-result" style={{ marginTop: 12 }}>
-                {results.map(product => (
-                  <div key={product.id} className="pos-product-card" onClick={() => addToCart(product)}>
-                    <div className="pname">{product.name}</div>
-                    <div className="pprice">₩{fmt(product.sale_price)}</div>
-                    <div className="pstock">재고 {product.stock}개 · {product.business}</div>
-                    {product.brand && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{product.brand}</div>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="pos-right">
-          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div className="flex-between" style={{ marginBottom: 16 }}>
-              <div className="card-title" style={{ margin: 0 }}>출고 품목</div>
-              {cart.length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setCart([])}>전체삭제</button>}
-            </div>
-            <div className="pos-cart" style={{ flex: 1 }}>
-              {cart.length === 0 ? (
-                <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 0', fontSize: 13 }}>상품을 검색해서 추가하세요</div>
-              ) : cart.map(item => (
-                <div key={item.product_id} className="cart-item">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="cart-item-name">{item.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>{item.business}{item.brand ? ` · ${item.brand}` : ''}</div>
-                    <input className="input" style={{ width: 110, marginTop: 4, padding: '4px 8px' }} value={fmt(item.sale_price)} onChange={e => setPrice(item.product_id, e.target.value)} />
-                  </div>
-                  <div className="cart-item-qty">
-                    <button className="qty-btn" onClick={() => updateQty(item.product_id, -1)}>−</button>
-                    <span style={{ minWidth: 24, textAlign: 'center', fontWeight: 600 }}>{item.quantity}</span>
-                    <button className="qty-btn" onClick={() => updateQty(item.product_id, 1)}>+</button>
-                  </div>
-                  <div style={{ minWidth: 80, textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700, color: 'var(--accent)' }}>₩{fmt(item.sale_price * item.quantity)}</div>
-                    <button onClick={() => setCart(prev => prev.filter(p => p.product_id !== item.product_id))} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 12 }}>삭제</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="cart-total">
-              <div className="total-row"><span className="text-muted">출고 합계</span><span className="total-amount">₩{fmt(total)}</span></div>
-              <div className="field" style={{ marginBottom: 10 }}>
-                <label>입금액</label>
-                <input className="input" type="number" value={paidAmount} onChange={e => setPaidAmount(+e.target.value)} />
-              </div>
-              <div className="total-row"><span className="text-muted">미수금</span><span style={{ color: balance ? 'var(--red)' : 'var(--green)', fontWeight: 700 }}>₩{fmt(balance)}</span></div>
-              <button className="btn btn-success btn-lg" style={{ width: '100%' }} onClick={save} disabled={cart.length === 0}>도매 출고 등록</button>
-            </div>
-          </div>
-        </div>
+        <button className="btn btn-primary" onClick={() => setShowRegister(true)}>+ 출고등록</button>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
@@ -352,7 +165,226 @@ export default function Wholesale() {
           </table>
         </div>
       </div>
+
+      {showRegister && (
+        <WholesaleRegisterModal
+          onClose={() => setShowRegister(false)}
+          onSave={(record) => {
+            setRecords(prev => [record, ...prev])
+            setShowRegister(false)
+            toast('도매 출고 등록 완료')
+          }}
+          toast={toast}
+        />
+      )}
       <ToastContainer />
+    </div>
+  )
+}
+
+function WholesaleRegisterModal({ onClose, onSave, toast }) {
+  const searchRef = useRef()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [cart, setCart] = useState([])
+  const [dealerName, setDealerName] = useState('')
+  const [outboundDate, setOutboundDate] = useState(dayjs().format('YYYY-MM-DD'))
+  const [paidAmount, setPaidAmount] = useState(0)
+  const [memo, setMemo] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const fmt = n => Number(n || 0).toLocaleString()
+  const total = cart.reduce((sum, item) => sum + item.sale_price * item.quantity, 0)
+  const balance = Math.max(total - paidAmount, 0)
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (query.trim().length < 1) {
+        setResults([])
+        return
+      }
+      try {
+        const r = await productApi.list({ q: query })
+        setResults(r.data)
+      } catch {}
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  const addToCart = (product) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.product_id === product.id)
+      if (existing) {
+        if (existing.quantity >= product.stock) {
+          toast(`재고 부족 (현재 ${product.stock}개)`, 'error')
+          return prev
+        }
+        return prev.map(item => item.product_id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
+      }
+      if (product.stock < 1) {
+        toast('재고가 없습니다', 'error')
+        return prev
+      }
+      return [...prev, {
+        product_id: product.id,
+        name: product.name,
+        business: product.business,
+        brand: product.brand,
+        sale_price: product.sale_price,
+        quantity: 1,
+        max_stock: product.stock,
+      }]
+    })
+    setQuery('')
+    setResults([])
+    searchRef.current?.focus()
+  }
+
+  const updateQty = (productId, delta) => {
+    setCart(prev => prev.map(item => {
+      if (item.product_id !== productId) return item
+      const next = item.quantity + delta
+      if (next < 1) return null
+      if (next > item.max_stock) {
+        toast(`최대 ${item.max_stock}개까지 가능`, 'error')
+        return item
+      }
+      return { ...item, quantity: next }
+    }).filter(Boolean))
+  }
+
+  const setPrice = (productId, value) => {
+    const price = parseInt(String(value).replace(/,/g, ''), 10)
+    if (Number.isNaN(price)) return
+    setCart(prev => prev.map(item => item.product_id === productId ? { ...item, sale_price: price } : item))
+  }
+
+  const save = async () => {
+    if (!dealerName.trim()) {
+      toast('도매처명을 입력해주세요.', 'error')
+      return
+    }
+    if (cart.length === 0) {
+      toast('출고할 상품을 추가해주세요.', 'error')
+      return
+    }
+    setSaving(true)
+    try {
+      const r = await wholesaleApi.create({
+        outbound_date: outboundDate,
+        dealer_name: dealerName.trim(),
+        paid_amount: Math.min(Number(paidAmount || 0), total),
+        memo,
+        items: cart.map(item => ({
+          product_id: item.product_id,
+          sale_price: item.sale_price,
+          quantity: item.quantity,
+        })),
+      })
+      onSave(r.data)
+    } catch (err) {
+      toast(err.response?.data?.detail || '도매 출고 등록 실패', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{ width: 1120 }} onClick={e => e.stopPropagation()}>
+        <div className="flex-between" style={{ marginBottom: 20 }}>
+          <h2 style={{ margin: 0 }}>도매처 출고 등록</h2>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>닫기</button>
+        </div>
+
+        <div className="pos-layout" style={{ minHeight: 560 }}>
+          <div className="pos-left">
+            <div className="card">
+              <div className="card-title">출고 정보</div>
+              <div className="grid-3" style={{ gap: 12 }}>
+                <div className="field">
+                  <label>출고일</label>
+                  <input className="input" type="date" value={outboundDate} onChange={e => setOutboundDate(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label>도매처</label>
+                  <input className="input" value={dealerName} onChange={e => setDealerName(e.target.value)} placeholder="도매처명" />
+                </div>
+                <div className="field">
+                  <label>메모</label>
+                  <input className="input" value={memo} onChange={e => setMemo(e.target.value)} placeholder="선택 입력" />
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-title">상품 검색</div>
+              <input
+                ref={searchRef}
+                className="input input-lg"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="상품명 입력..."
+                autoFocus
+              />
+              {results.length > 0 && (
+                <div className="pos-search-result" style={{ marginTop: 12 }}>
+                  {results.map(product => (
+                    <div key={product.id} className="pos-product-card" onClick={() => addToCart(product)}>
+                      <div className="pname">{product.name}</div>
+                      <div className="pprice">₩{fmt(product.sale_price)}</div>
+                      <div className="pstock">재고 {product.stock}개 · {product.business}</div>
+                      {product.brand && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{product.brand}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="pos-right">
+            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div className="flex-between" style={{ marginBottom: 16 }}>
+                <div className="card-title" style={{ margin: 0 }}>출고 품목</div>
+                {cart.length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setCart([])}>전체삭제</button>}
+              </div>
+              <div className="pos-cart" style={{ flex: 1 }}>
+                {cart.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 0', fontSize: 13 }}>상품을 검색해서 추가하세요</div>
+                ) : cart.map(item => (
+                  <div key={item.product_id} className="cart-item">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="cart-item-name">{item.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{item.business}{item.brand ? ` · ${item.brand}` : ''}</div>
+                      <input className="input" style={{ width: 110, marginTop: 4, padding: '4px 8px' }} value={fmt(item.sale_price)} onChange={e => setPrice(item.product_id, e.target.value)} />
+                    </div>
+                    <div className="cart-item-qty">
+                      <button className="qty-btn" onClick={() => updateQty(item.product_id, -1)}>−</button>
+                      <span style={{ minWidth: 24, textAlign: 'center', fontWeight: 600 }}>{item.quantity}</span>
+                      <button className="qty-btn" onClick={() => updateQty(item.product_id, 1)}>+</button>
+                    </div>
+                    <div style={{ minWidth: 80, textAlign: 'right' }}>
+                      <div style={{ fontWeight: 700, color: 'var(--accent)' }}>₩{fmt(item.sale_price * item.quantity)}</div>
+                      <button onClick={() => setCart(prev => prev.filter(p => p.product_id !== item.product_id))} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 12 }}>삭제</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="cart-total">
+                <div className="total-row"><span className="text-muted">출고 합계</span><span className="total-amount">₩{fmt(total)}</span></div>
+                <div className="field" style={{ marginBottom: 10 }}>
+                  <label>입금액</label>
+                  <input className="input" type="number" value={paidAmount} onChange={e => setPaidAmount(+e.target.value)} />
+                </div>
+                <div className="total-row"><span className="text-muted">미수금</span><span style={{ color: balance ? 'var(--red)' : 'var(--green)', fontWeight: 700 }}>₩{fmt(balance)}</span></div>
+                <button className="btn btn-success btn-lg" style={{ width: '100%' }} onClick={save} disabled={cart.length === 0 || saving}>
+                  {saving ? '등록 중...' : '도매 출고 등록'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
