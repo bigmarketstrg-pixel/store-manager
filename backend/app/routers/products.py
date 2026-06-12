@@ -239,7 +239,6 @@ class InboundCreate(BaseModel):
     transaction_no: Optional[str] = None
 
 class BulkInboundItem(BaseModel):
-    business: str = "이 외"
     category: Optional[str] = None
     subcategory: Optional[str] = None
     brand: Optional[str] = None
@@ -252,6 +251,7 @@ class BulkInboundItem(BaseModel):
 class BulkInboundCreate(BaseModel):
     record_date: date
     supplier_name: str
+    business: str = "다담"
     total_amount: int = 0
     memo: Optional[str] = None
     transaction_no: Optional[str] = None
@@ -299,7 +299,7 @@ def inbound_bulk(body: BulkInboundCreate, db: Session = Depends(get_db), user=De
         if not name or item.quantity <= 0:
             continue
 
-        business = clean_business(item.business)
+        business = clean_business(body.business)
         query = db.query(Product).filter(Product.name == name, Product.business == business)
         brand = clean_text(item.brand, None)
         if brand:

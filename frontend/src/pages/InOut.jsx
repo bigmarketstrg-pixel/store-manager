@@ -6,7 +6,6 @@ import dayjs from 'dayjs'
 const BUSINESSES = ['전체', '다담', '훌라', '오아시스', '이 외']
 const INBOUND_BUSINESSES = ['다담', '훌라']
 const emptyRow = () => ({
-  business: '다담',
   category: '',
   subcategory: '',
   brand: '',
@@ -108,6 +107,7 @@ function BulkInboundModal({ onClose, onSave, toast }) {
   const [products, setProducts] = useState([])
   const [recordDate, setRecordDate] = useState(dayjs().format('YYYY-MM-DD'))
   const [supplierName, setSupplierName] = useState('')
+  const [inboundBusiness, setInboundBusiness] = useState('다담')
   const [memo, setMemo] = useState('')
   const [rows, setRows] = useState([emptyRow()])
 
@@ -122,7 +122,6 @@ function BulkInboundModal({ onClose, onSave, toast }) {
   }
   const fillFromProduct = (row, product) => ({
     ...row,
-    business: product.business || row.business,
     category: product.category || '',
     subcategory: product.subcategory || '',
     brand: product.brand || '',
@@ -133,18 +132,16 @@ function BulkInboundModal({ onClose, onSave, toast }) {
   const applyProduct = (index, name) => {
     setRows(prev => prev.map((row, i) => {
       if (i !== index) return row
-      const exact = products.find(p => p.name === name && p.business === row.business)
-        || products.find(p => p.name === name && INBOUND_BUSINESSES.includes(p.business))
+      const exact = products.find(p => p.name === name && p.business === inboundBusiness)
       if (!exact) return { ...row, product_name: name }
       return fillFromProduct(row, exact)
     }))
   }
-  const changeBusiness = (index, business) => {
-    setRows(prev => prev.map((row, i) => {
-      if (i !== index) return row
-      const next = { ...row, business }
+  const changeInboundBusiness = (business) => {
+    setInboundBusiness(business)
+    setRows(prev => prev.map(row => {
       const exact = products.find(p => p.name === row.product_name && p.business === business)
-      return exact ? fillFromProduct(next, exact) : next
+      return exact ? fillFromProduct(row, exact) : row
     }))
   }
   const addRow = () => setRows(prev => [...prev, emptyRow()])
@@ -152,7 +149,7 @@ function BulkInboundModal({ onClose, onSave, toast }) {
   const amount = row => (Number(row.quantity) || 0) * (Number(row.cost_price) || 0)
   const totalAmount = rows.reduce((sum, row) => sum + amount(row), 0)
   const fmt = n => Math.round(Number(n) || 0).toLocaleString()
-  const inboundProducts = products.filter(p => INBOUND_BUSINESSES.includes(p.business))
+  const inboundProducts = products.filter(p => p.business === inboundBusiness)
   const productNames = [...new Set(inboundProducts.map(p => p.name).filter(Boolean))].sort()
   const categories = [...new Set(inboundProducts.map(p => p.category).filter(Boolean))].sort()
   const subcategories = [...new Set(inboundProducts.map(p => p.subcategory).filter(Boolean))].sort()
@@ -162,7 +159,6 @@ function BulkInboundModal({ onClose, onSave, toast }) {
     const items = rows
       .map(row => ({
         brand: row.brand.trim(),
-        business: row.business,
         category: row.category.trim(),
         subcategory: row.subcategory.trim(),
         product_name: row.product_name.trim(),
@@ -180,6 +176,7 @@ function BulkInboundModal({ onClose, onSave, toast }) {
       await productApi.inboundBulk({
         record_date: recordDate,
         supplier_name: supplierName.trim(),
+        business: inboundBusiness,
         total_amount: totalAmount,
         memo,
         items,
@@ -192,9 +189,9 @@ function BulkInboundModal({ onClose, onSave, toast }) {
 
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal" style={{ width: 900 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ width: 'min(1180px, 96vw)' }} onClick={e => e.stopPropagation()}>
         <h2>입고 등록</h2>
-        <div className="grid-2" style={{ gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '150px 1.4fr 120px 1.6fr', gap: 12, marginBottom: 16, alignItems: 'end' }}>
           <div className="field">
             <label>날짜</label>
             <input className="input" type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)} />
@@ -203,7 +200,13 @@ function BulkInboundModal({ onClose, onSave, toast }) {
             <label>상호명</label>
             <input className="input" value={supplierName} onChange={e => setSupplierName(e.target.value)} placeholder="거래처 상호명" />
           </div>
-          <div className="field" style={{ gridColumn: '1/-1' }}>
+          <div className="field">
+            <label>사업자</label>
+            <select className="input" value={inboundBusiness} onChange={e => changeInboundBusiness(e.target.value)}>
+              {INBOUND_BUSINESSES.map(b => <option key={b}>{b}</option>)}
+            </select>
+          </div>
+          <div className="field">
             <label>메모</label>
             <input className="input" value={memo} onChange={e => setMemo(e.target.value)} />
           </div>
@@ -214,10 +217,20 @@ function BulkInboundModal({ onClose, onSave, toast }) {
           <datalist id="inbound-categories">{categories.map(v => <option key={v} value={v} />)}</datalist>
           <datalist id="inbound-subcategories">{subcategories.map(v => <option key={v} value={v} />)}</datalist>
           <datalist id="inbound-brands">{brands.map(v => <option key={v} value={v} />)}</datalist>
-          <table>
+          <table style={{ minWidth: 1120, tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: 150 }} />
+              <col style={{ width: 150 }} />
+              <col style={{ width: 170 }} />
+              <col style={{ width: 240 }} />
+              <col style={{ width: 72 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 70 }} />
+            </colgroup>
             <thead>
               <tr>
-                <th>사업자</th>
                 <th>대분류</th>
                 <th>중분류</th>
                 <th>브랜드</th>
@@ -232,11 +245,6 @@ function BulkInboundModal({ onClose, onSave, toast }) {
             <tbody>
               {rows.map((row, i) => (
                 <tr key={i}>
-                  <td>
-                    <select className="input" value={row.business} onChange={e => changeBusiness(i, e.target.value)}>
-                      {INBOUND_BUSINESSES.map(b => <option key={b}>{b}</option>)}
-                    </select>
-                  </td>
                   <td><input className="input" list="inbound-categories" value={row.category} onChange={e => setRow(i, 'category', e.target.value)} placeholder="대분류" /></td>
                   <td><input className="input" list="inbound-subcategories" value={row.subcategory} onChange={e => setRow(i, 'subcategory', e.target.value)} placeholder="중분류" /></td>
                   <td><input className="input" list="inbound-brands" value={row.brand} onChange={e => setRow(i, 'brand', e.target.value)} placeholder="브랜드" /></td>
