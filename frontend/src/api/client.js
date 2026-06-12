@@ -55,6 +55,13 @@ export const saleApi = {
   summary: (params) => api.get('/api/sales/summary', { params }),
 }
 
+export const wholesaleApi = {
+  create: (data) => api.post('/api/wholesale-outbounds', data),
+  list: (params) => api.get('/api/wholesale-outbounds', { params }),
+  update: (id, data) => api.patch(`/api/wholesale-outbounds/${id}`, data),
+  delete: (id) => api.delete(`/api/wholesale-outbounds/${id}`),
+}
+
 export const deliveryApi = {
   list: (params) => api.get('/api/deliveries', { params }),
   create: (data) => api.post('/api/deliveries', data),

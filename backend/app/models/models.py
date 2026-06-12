@@ -64,6 +64,40 @@ class Sale(Base):
     product = relationship("Product")
     user = relationship("User")
 
+# ── 도매처 출고 ───────────────────────────────────────
+class WholesaleOutbound(Base):
+    __tablename__ = "wholesale_outbounds"
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_no = Column(String(20), unique=True, nullable=False, index=True)
+    outbound_date = Column(Date, nullable=False)
+    dealer_name = Column(String(100), nullable=False)
+    total = Column(Integer, default=0)
+    paid_amount = Column(Integer, default=0)
+    payment_status = Column(String(20), default="미수")  # 미수 / 일부입금 / 완납
+    memo = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, server_default=func.now())
+
+    items = relationship("WholesaleOutboundItem", cascade="all, delete-orphan")
+    user = relationship("User")
+
+class WholesaleOutboundItem(Base):
+    __tablename__ = "wholesale_outbound_items"
+    id = Column(Integer, primary_key=True, index=True)
+    outbound_id = Column(Integer, ForeignKey("wholesale_outbounds.id"))
+    product_id = Column(Integer, ForeignKey("products.id"))
+    product_name = Column(String(200))
+    business = Column(String(20))
+    category = Column(String(100))
+    subcategory = Column(String(100))
+    brand = Column(String(100))
+    cost_price = Column(Integer, default=0)
+    sale_price = Column(Integer, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    total = Column(Integer, nullable=False)
+
+    product = relationship("Product")
+
 # ── 입출기록 ──────────────────────────────────────────
 class StockHistory(Base):
     __tablename__ = "stock_history"

@@ -8,6 +8,7 @@ const NAV = [
   { section: '판매' },
   { to: '/pos', icon: '🛒', label: '판매 (POS)' },
   { to: '/sales', icon: '📋', label: '판매 내역' },
+  { to: '/wholesale', icon: '🏷️', label: '도매처 출고' },
   { section: '재고' },
   { to: '/stock', icon: '📦', label: '재고 관리' },
   { to: '/inout', icon: '🔄', label: '입출기록' },

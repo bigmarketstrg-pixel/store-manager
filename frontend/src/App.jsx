@@ -6,6 +6,7 @@ import POS from './pages/POS'
 import Stock from './pages/Stock'
 import InOut from './pages/InOut'
 import SalesHistory from './pages/SalesHistory'
+import Wholesale from './pages/Wholesale'
 import Shipping from './pages/Shipping'
 import Revenue from './pages/Revenue'
 import Users from './pages/Users'
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/login" element={<LoginRedirect />} />
           <Route path="/pos" element={<PrivateRoute><POS /></PrivateRoute>} />
           <Route path="/sales" element={<PrivateRoute><SalesHistory /></PrivateRoute>} />
+          <Route path="/wholesale" element={<PrivateRoute><Wholesale /></PrivateRoute>} />
           <Route path="/stock" element={<PrivateRoute><Stock /></PrivateRoute>} />
           <Route path="/inout" element={<PrivateRoute><InOut /></PrivateRoute>} />
           <Route path="/quote" element={<PrivateRoute><Documents /></PrivateRoute>} />

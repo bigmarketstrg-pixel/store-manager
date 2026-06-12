@@ -5,6 +5,7 @@ from app.models.models import Base
 from app.routers.auth import router as auth_router
 from app.routers.products import router as products_router
 from app.routers.sales import router as sales_router
+from app.routers.wholesale import router as wholesale_router
 from app.routers.extras import delivery_router, doc_router, handover_router
 from app.auth import hash_password
 from app.database import SessionLocal
@@ -26,6 +27,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(products_router)
 app.include_router(sales_router)
+app.include_router(wholesale_router)
 app.include_router(delivery_router)
 app.include_router(handover_router)
 app.include_router(doc_router)
