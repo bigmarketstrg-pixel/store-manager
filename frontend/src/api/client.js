@@ -62,6 +62,13 @@ export const deliveryApi = {
   delete: (id) => api.delete(`/api/deliveries/${id}`),
 }
 
+export const handoverApi = {
+  list: () => api.get('/api/handover-notes'),
+  create: (data) => api.post('/api/handover-notes', data),
+  update: (id, data) => api.patch(`/api/handover-notes/${id}`, data),
+  delete: (id) => api.delete(`/api/handover-notes/${id}`),
+}
+
 export const docApi = {
   list: (params) => api.get('/api/documents', { params }),
   get: (id) => api.get(`/api/documents/${id}`),

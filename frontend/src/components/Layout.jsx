@@ -13,6 +13,7 @@ const NAV = [
   { to: '/inout', icon: '🔄', label: '입출기록' },
   { section: '문서' },
   { to: '/quote', icon: '📄', label: '견적서 및 납품서 발행' },
+  { to: '/handover', icon: '📝', label: '인수인계' },
   { section: '정산' },
   { to: '/shipping', icon: '🚚', label: '택배비 관리' },
   { to: '/revenue', icon: '📊', label: '매출 집계' },

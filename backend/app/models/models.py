@@ -111,3 +111,16 @@ class Delivery(Base):
     memo = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, server_default=func.now())
+
+# ── 인수인계 ──────────────────────────────────────────
+class HandoverNote(Base):
+    __tablename__ = "handover_notes"
+    id = Column(Integer, primary_key=True, index=True)
+    note_date = Column(Date, nullable=False)
+    business = Column(String(20), nullable=False)
+    memo = Column(String(500), nullable=False)
+    is_done = Column(Integer, default=0)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User")

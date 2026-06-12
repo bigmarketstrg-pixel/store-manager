@@ -10,6 +10,7 @@ import Shipping from './pages/Shipping'
 import Revenue from './pages/Revenue'
 import Users from './pages/Users'
 import Documents from './pages/Documents'
+import Handover from './pages/Handover'
 
 function PrivateRoute({ children, adminOnly }) {
   const { user, loading } = useAuth()
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/delivery-note" element={<Navigate to="/quote" replace />} />
           <Route path="/shipping" element={<PrivateRoute><Shipping /></PrivateRoute>} />
           <Route path="/revenue" element={<PrivateRoute><Revenue /></PrivateRoute>} />
+          <Route path="/handover" element={<PrivateRoute><Handover /></PrivateRoute>} />
           <Route path="/users" element={<PrivateRoute adminOnly><Users /></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/pos" replace />} />
         </Routes>

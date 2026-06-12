@@ -3,13 +3,14 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 from app.database import get_db
-from app.models.models import Delivery, Document, User
+from app.models.models import Delivery, Document, HandoverNote, User
 from app.auth import get_current_user, require_admin
 from datetime import date
 import json
 
 # ── 택배비 ────────────────────────────────────────────
 delivery_router = APIRouter(prefix="/api/deliveries", tags=["deliveries"])
+handover_router = APIRouter(prefix="/api/handover-notes", tags=["handover"])
 
 class DeliveryCreate(BaseModel):
     delivery_date: date
@@ -71,6 +72,90 @@ def delete_delivery(delivery_id: int, db: Session = Depends(get_db), user=Depend
     if not d:
         raise HTTPException(status_code=404, detail="배송 기록을 찾을 수 없습니다.")
     db.delete(d)
+    db.commit()
+    return {"ok": True}
+
+# ── 인수인계 ──────────────────────────────────────────
+class HandoverCreate(BaseModel):
+    note_date: date
+    business: str
+    memo: str
+
+class HandoverOut(BaseModel):
+    id: int
+    note_date: date
+    business: str
+    memo: str
+    is_done: int
+    staff_name: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+def handover_to_out(note: HandoverNote, staff_name: Optional[str] = None) -> dict:
+    return {
+        "id": note.id,
+        "note_date": note.note_date,
+        "business": note.business,
+        "memo": note.memo,
+        "is_done": note.is_done,
+        "staff_name": staff_name,
+    }
+
+@handover_router.get("", response_model=list[HandoverOut])
+def list_handover_notes(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    rows = (
+        db.query(HandoverNote, User.name)
+        .outerjoin(User, HandoverNote.created_by == User.id)
+        .order_by(HandoverNote.is_done.asc(), HandoverNote.note_date.desc(), HandoverNote.created_at.desc())
+        .all()
+    )
+    return [handover_to_out(note, staff_name) for note, staff_name in rows]
+
+@handover_router.post("", response_model=HandoverOut)
+def create_handover_note(body: HandoverCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    memo = body.memo.strip()
+    if not memo:
+        raise HTTPException(status_code=400, detail="메모를 입력해주세요.")
+    note = HandoverNote(
+        note_date=body.note_date,
+        business=body.business,
+        memo=memo,
+        created_by=user.id,
+    )
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    return handover_to_out(note, user.name)
+
+@handover_router.patch("/{note_id}", response_model=HandoverOut)
+def update_handover_note(note_id: int, body: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    note = db.query(HandoverNote).filter(HandoverNote.id == note_id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="인수인계 메모를 찾을 수 없습니다.")
+    if "is_done" in body:
+        note.is_done = 1 if body["is_done"] else 0
+    if "memo" in body:
+        memo = str(body["memo"]).strip()
+        if not memo:
+            raise HTTPException(status_code=400, detail="메모를 입력해주세요.")
+        note.memo = memo
+    for key in ("note_date", "business"):
+        if key in body:
+            setattr(note, key, body[key])
+    db.commit()
+    db.refresh(note)
+    staff_name = db.query(User.name).filter(User.id == note.created_by).scalar()
+    return handover_to_out(note, staff_name)
+
+@handover_router.delete("/{note_id}")
+def delete_handover_note(note_id: int, db: Session = Depends(get_db), user=Depends(require_admin)):
+    note = db.query(HandoverNote).filter(HandoverNote.id == note_id).first()
+    if not note:
+        raise HTTPException(status_code=404, detail="인수인계 메모를 찾을 수 없습니다.")
+    db.delete(note)
     db.commit()
     return {"ok": True}
 
