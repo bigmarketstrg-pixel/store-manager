@@ -24,6 +24,8 @@ export default function Handover() {
     try {
       const r = await handoverApi.list()
       setNotes(r.data)
+    } catch (err) {
+      toast(err.response?.data?.detail || '인수인계 목록을 불러오지 못했습니다.', 'error')
     } finally {
       setLoading(false)
     }
@@ -39,12 +41,15 @@ export default function Handover() {
       return
     }
     try {
-      await handoverApi.create({ ...form, memo: form.memo.trim() })
+      const r = await handoverApi.create({ ...form, memo: form.memo.trim() })
       setForm(prev => ({ ...prev, memo: '' }))
+      setNotes(prev => [r.data, ...prev])
       toast('등록 완료')
-      load()
     } catch (err) {
-      toast(err.response?.data?.detail || '등록 실패', 'error')
+      const message = err.response?.status === 404
+        ? '인수인계 저장 주소를 찾지 못했습니다. 백엔드 배포를 다시 확인해주세요.'
+        : err.response?.data?.detail || '등록 실패'
+      toast(message, 'error')
     }
   }
 
