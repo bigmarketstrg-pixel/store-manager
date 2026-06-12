@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.database import get_db
 from app.models.models import Product, StockHistory
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 from datetime import date, datetime
 import os
 import sqlite3
@@ -221,7 +221,7 @@ def update_product(product_id: int, body: dict, db: Session = Depends(get_db), u
     return p
 
 @router.delete("/{product_id}")
-def delete_product(product_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def delete_product(product_id: int, db: Session = Depends(get_db), user=Depends(require_admin)):
     p = db.query(Product).filter(Product.id == product_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")

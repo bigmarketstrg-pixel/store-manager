@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { productApi } from '../api/client'
+import { useAuth } from '../context/AuthContext'
 import { useToast } from '../hooks/useToast.jsx'
 import * as XLSX from 'xlsx'
 
@@ -24,7 +25,9 @@ export default function Stock() {
   const [importing, setImporting] = useState(false)
   const fileInputRef = useRef(null)
   const importModeRef = useRef('merge')
+  const { user } = useAuth()
   const { toast, ToastContainer } = useToast()
+  const isAdmin = user?.role === 'admin'
 
   const load = async () => {
     setLoading(true)
@@ -48,6 +51,18 @@ export default function Stock() {
 
   const openEdit = (item = null) => { setEditItem(item); setShowModal(true) }
   const openInbound = (item) => { setInboundItem(item); setShowInbound(true) }
+
+  const deleteProduct = async (item) => {
+    if (!isAdmin) { toast('관리자만 삭제할 수 있습니다.', 'error'); return }
+    if (!confirm(`'${item.name}' 상품 데이터를 삭제할까요? 재고 데이터에서 완전히 삭제됩니다.`)) return
+    try {
+      await productApi.delete(item.id)
+      toast('상품 삭제 완료')
+      load()
+    } catch (err) {
+      toast(err.response?.data?.detail || '상품 삭제 실패', 'error')
+    }
+  }
 
   const resetFilters = () => {
     setQ('')
@@ -229,6 +244,7 @@ export default function Stock() {
                     <div className="flex gap-8">
                       <button className="btn btn-ghost btn-sm" onClick={() => openInbound(p)}>입고</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => openEdit(p)}>수정</button>
+                      {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => deleteProduct(p)}>삭제</button>}
                     </div>
                   </td>
                 </tr>
