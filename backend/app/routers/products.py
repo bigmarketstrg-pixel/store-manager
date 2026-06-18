@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 from app.database import get_db
-from app.models.models import Product, StockHistory
+from app.models.models import Product, Sale, StockHistory, WholesaleOutboundItem
 from app.auth import get_current_user, require_admin
 from datetime import date, datetime
 import os
@@ -225,8 +225,28 @@ def delete_product(product_id: int, db: Session = Depends(get_db), user=Depends(
     p = db.query(Product).filter(Product.id == product_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
-    db.delete(p)
-    db.commit()
+
+    try:
+        db.query(Sale).filter(Sale.product_id == product_id).update(
+            {Sale.product_id: None},
+            synchronize_session=False
+        )
+        db.query(StockHistory).filter(StockHistory.product_id == product_id).update(
+            {StockHistory.product_id: None},
+            synchronize_session=False
+        )
+        db.query(WholesaleOutboundItem).filter(WholesaleOutboundItem.product_id == product_id).update(
+            {WholesaleOutboundItem.product_id: None},
+            synchronize_session=False
+        )
+        db.delete(p)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="연결된 기록이 있어 상품을 삭제할 수 없습니다. 입출기록/판매내역을 확인해주세요."
+        )
     return {"ok": True}
 
 # ── 입고 처리 ──────────────────────────────────────────
