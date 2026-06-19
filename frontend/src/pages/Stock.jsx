@@ -8,6 +8,7 @@ const BUSINESSES = ['전체', '다담', '훌라', '오아시스', '이 외']
 
 export default function Stock() {
   const [products, setProducts] = useState([])
+  const [filterOptions, setFilterOptions] = useState({ categories: [], subcategories: [], brands: [] })
   const [q, setQ] = useState('')
   const [business, setBusiness] = useState('전체')
   const [category, setCategory] = useState('')
@@ -27,6 +28,16 @@ export default function Stock() {
   const { toast, ToastContainer } = useToast()
   const isAdmin = user?.role === 'admin'
 
+  const loadFilterOptions = async () => {
+    const r = await productApi.list({})
+    const unique = (key) => [...new Set(r.data.map(p => p[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
+    setFilterOptions({
+      categories: unique('category'),
+      subcategories: unique('subcategory'),
+      brands: unique('brand'),
+    })
+  }
+
   const load = async () => {
     setLoading(true)
     try {
@@ -45,6 +56,7 @@ export default function Stock() {
     } finally { setLoading(false) }
   }
 
+  useEffect(() => { loadFilterOptions() }, [])
   useEffect(() => { load() }, [q, business, category, subcategory, brand, costMin, costMax, saleMin, saleMax])
 
   const openEdit = (item = null) => { setEditItem(item); setShowModal(true) }
@@ -55,6 +67,7 @@ export default function Stock() {
     try {
       await productApi.delete(item.id)
       toast('상품 삭제 완료')
+      loadFilterOptions()
       load()
     } catch (err) {
       toast(err.response?.data?.detail || '상품 삭제 실패', 'error')
@@ -104,6 +117,7 @@ export default function Stock() {
       const { total, created, updated, skipped, deleted = 0 } = r.data
       if (deleted) toast(`기존 재고 ${deleted}개 삭제 후 교체했습니다.`)
       toast(`가져오기 완료: 전체 ${total}개 / 추가 ${created}개 / 업데이트 ${updated}개 / 건너뜀 ${skipped}개`)
+      loadFilterOptions()
       load()
     } catch (err) {
       toast(err.response?.data?.detail || 'DB 가져오기 실패', 'error')
@@ -196,9 +210,18 @@ export default function Stock() {
           <select className="input" value={business} onChange={e => setBusiness(e.target.value)} style={{ width: 120 }}>
             {BUSINESSES.map(b => <option key={b}>{b}</option>)}
           </select>
-          <input className="input" placeholder="대분류" value={category} onChange={e => setCategory(e.target.value)} style={{ width: 130 }} />
-          <input className="input" placeholder="중분류" value={subcategory} onChange={e => setSubcategory(e.target.value)} style={{ width: 130 }} />
-          <input className="input" placeholder="브랜드" value={brand} onChange={e => setBrand(e.target.value)} style={{ width: 130 }} />
+          <input className="input" list="stock-category-options" placeholder="대분류 선택/입력" value={category} onChange={e => setCategory(e.target.value)} style={{ width: 150 }} />
+          <input className="input" list="stock-subcategory-options" placeholder="중분류 선택/입력" value={subcategory} onChange={e => setSubcategory(e.target.value)} style={{ width: 150 }} />
+          <input className="input" list="stock-brand-options" placeholder="브랜드 선택/입력" value={brand} onChange={e => setBrand(e.target.value)} style={{ width: 170 }} />
+          <datalist id="stock-category-options">
+            {filterOptions.categories.map(v => <option key={v} value={v} />)}
+          </datalist>
+          <datalist id="stock-subcategory-options">
+            {filterOptions.subcategories.map(v => <option key={v} value={v} />)}
+          </datalist>
+          <datalist id="stock-brand-options">
+            {filterOptions.brands.map(v => <option key={v} value={v} />)}
+          </datalist>
           <input className="input" type="number" placeholder="단가 최소" value={costMin} onChange={e => setCostMin(e.target.value)} style={{ width: 110 }} />
           <input className="input" type="number" placeholder="단가 최대" value={costMax} onChange={e => setCostMax(e.target.value)} style={{ width: 110 }} />
           <input className="input" type="number" placeholder="판매가 최소" value={saleMin} onChange={e => setSaleMin(e.target.value)} style={{ width: 120 }} />
@@ -254,7 +277,7 @@ export default function Stock() {
         <ProductModal
           item={editItem}
           onClose={() => setShowModal(false)}
-          onSave={() => { setShowModal(false); load(); toast(editItem ? '수정 완료' : '상품 추가 완료') }}
+          onSave={() => { setShowModal(false); loadFilterOptions(); load(); toast(editItem ? '수정 완료' : '상품 추가 완료') }}
           toast={toast}
         />
       )}
