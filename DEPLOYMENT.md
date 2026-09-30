@@ -5,7 +5,9 @@
 - Cloudflare Pages serves the React/Vite frontend from `frontend/`.
 - Supabase Edge Function `store-manager-api-v2` serves the existing `/api/*` contract from `supabase/functions/`.
 - Supabase PostgreSQL stores the nine existing business tables. The migration does not copy or reset their data.
-- Render is the legacy backend and should stay available until the new deployment has been verified on the production site.
+- Production site: `https://store-manager-3q1.pages.dev`. Cloudflare Pages builds `main` from GitHub.
+- Render is the legacy backend. After the production login and core lists were verified, its automatic deploys were disabled and the service was suspended. Keep it suspended for a reversible rollback; it is not in the live request path.
+- The former Vercel project is disconnected from GitHub and its production traffic is paused. Old Vercel URLs return an error; use the Cloudflare Pages URL above.
 
 ## Local checks
 
@@ -42,14 +44,14 @@ The production frontend API URL is configured in `frontend/.env.production`. Tes
 https://tejsmczzzsmoxmpuuzai.supabase.co/functions/v1/store-manager-api-v2
 ```
 
-Cloudflare Pages builds the frontend from GitHub after a push. Its build command is `npm run build` in `frontend/`, with `dist` as output. After deployment, verify login, stock, sales, wholesale, documents, deliveries, and handover screens before turning off Render.
+Cloudflare Pages builds the frontend from GitHub after a push. Its build command is `npm run build` in `frontend/`, with `dist` as output. After each deployment, verify login, stock, sales, wholesale, documents, deliveries, and handover screens. The production login and stock, sales, wholesale, and document lists were verified during the cutover.
 
 ## Data and rollback
 
 - Before infrastructure changes, create an external PostgreSQL dump and check it can be read with `pg_restore --list`. Keep dumps outside Git; `backups/` is ignored.
 - The new and old backends use the same Supabase database. Do not restore or re-import the dump as part of this frontend cutover.
-- To revert the frontend, restore the former Render URL in `frontend/.env.production` and redeploy Cloudflare Pages. Render must be running for that rollback path.
-- Preserve the old Render service until a real user has checked the new production site. Disable it before deleting it; deletion loses the fast rollback path.
+- To revert the frontend, first resume the suspended Render service, then restore the former Render URL in `frontend/.env.production` and redeploy Cloudflare Pages. Render must be running for that rollback path.
+- Do not delete the suspended Render service or the checked PostgreSQL dump until the new path has been used long enough to rule out operational regressions.
 
 ## Free-tier hygiene
 
