@@ -1,0 +1,171 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:bcryptjs@3.0.2": "3.0.2",
+    "npm:deno@2.9.6": "2.9.6",
+    "npm:hono@4.10.0": "4.10.0",
+    "npm:jose@6.1.0": "6.1.0",
+    "npm:postgres@3.4.7": "3.4.7",
+    "npm:sql.js@1.13.0": "1.13.0",
+    "npm:supabase@2.118.0": "2.118.0"
+  },
+  "npm": {
+    "@deno/darwin-arm64@2.9.6": {
+      "integrity": "sha512-V8uO1Aolrl/yvdMb5lOtgtigs8YuZBjrOrgviVMiYkQ0swymFfzkae1wZak4Xi24t7vf7d/eiMb/7ryjjVm+tg==",
+      "os": ["darwin"],
+      "cpu": ["arm64"]
+    },
+    "@deno/darwin-x64@2.9.6": {
+      "integrity": "sha512-tPi3CWPRdjW1MaWlvWjORE7Ass5SADdWdj1BF1Q1PEdzi+5u/mC5YhmZzniMiPr81PpaFeqjXaLAsfb8lFsZ0Q==",
+      "os": ["darwin"],
+      "cpu": ["x64"]
+    },
+    "@deno/linux-arm64-glibc@2.9.6": {
+      "integrity": "sha512-poqhoH9B3nYloigEMPT5t8HY+wBeiuea1An5Q7fqgJzP0SYmWsoS/oUnWO/pEiA4ofzIBy1Elt/in58xKtxEoQ==",
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    "@deno/linux-x64-glibc@2.9.6": {
+      "integrity": "sha512-3md4TKLCuzsLDmfOoC5KN7NAZaxSVkMgm64vg6foD00JBADCpYS2/5QqXfzgnP5ZQz3iLP9vBQJtEgc116OAoQ==",
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    "@deno/win32-arm64@2.9.6": {
+      "integrity": "sha512-iHSHs89g2Uy6k0bGHmXkgzTIW8WXImYPpvqRRO/zNsK1/N79PcjvAth1TuQatuIALcLdocstPs/PAYtndbfr0A==",
+      "os": ["win32"],
+      "cpu": ["arm64"]
+    },
+    "@deno/win32-x64@2.9.6": {
+      "integrity": "sha512-qRGnmVz/Ea6UWPht/S3xFRK17UZ/ls38DSVfgGB17fpASLxPkksqzWUI/BzL9YYoOknYzfc94mySGyInZu/JXw==",
+      "os": ["win32"],
+      "cpu": ["x64"]
+    },
+    "@ecies/ciphers@0.2.6_@noble+ciphers@1.3.0": {
+      "integrity": "sha512-patgsRPKGkhhoBjETV4XxD0En4ui5fbX0hzayqI3M8tvNMGUoUvmyYAIWwlxBc1KX5cturfqByYdj5bYGRpN9g==",
+      "dependencies": [
+        "@noble/ciphers"
+      ]
+    },
+    "@noble/ciphers@1.3.0": {
+      "integrity": "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="
+    },
+    "@noble/curves@1.9.7": {
+      "integrity": "sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==",
+      "dependencies": [
+        "@noble/hashes"
+      ]
+    },
+    "@noble/hashes@1.8.0": {
+      "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="
+    },
+    "@supabase/cli-darwin-arm64@2.118.0": {
+      "integrity": "sha512-48W7wkHIVNgwSz4zr+xsC94la1PytCpudOw5w9qJWAISyBWRXMFBCEMb9aVIEG8S9OcLb4X1KZy4PPA/T+f7NQ==",
+      "os": ["darwin"],
+      "cpu": ["arm64"]
+    },
+    "@supabase/cli-darwin-x64@2.118.0": {
+      "integrity": "sha512-r6z41S0ycJiy2cO6sbJA7kPCodpAus6b3Km+qyn2zYlnTLN0nbscYnKxrZf/rJNR+S+sdpOZXgdQjGc/z5jvXw==",
+      "os": ["darwin"],
+      "cpu": ["x64"]
+    },
+    "@supabase/cli-linux-arm64-musl@2.118.0": {
+      "integrity": "sha512-8yXIa+9g3FVVlnUAZ9wB1NEP6kvO0tpqQkDs3wqmb6btLD1MYosD/2/ZazSkpEHiKOwKUSymvUg0OgqI7a1gpw==",
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    "@supabase/cli-linux-arm64@2.118.0": {
+      "integrity": "sha512-gYjOTnsYgwC68suoFALaXo87KvluXMjdWuo26a7hyD8vLeRJrmX+dpdxgegckQ7wxz8V1iotSBQU6Hd44FEDqw==",
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    "@supabase/cli-linux-x64-musl@2.118.0": {
+      "integrity": "sha512-baHVTKJ8OehCXIt6pjHFRXofoUqQzve+43lRKKeVlcgDmgHHTTaF/wTpNvQ86IhoDRkiQTuHQkDG8I5GtHdvEA==",
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    "@supabase/cli-linux-x64@2.118.0": {
+      "integrity": "sha512-nHm27uv15iu4xIQZRC++CS4uKYU9HuFn9HiOf407620OQ3cCp70fLT59grFlYQ+bqM7Zrv/GmEZHdgR8UO65RA==",
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    "@supabase/cli-windows-arm64@2.118.0": {
+      "integrity": "sha512-wd592HmQQ7DsGjnwDHILJfFlsRBQ8Q6wwjX5AXRmqznsj3NOPfFzZm2GtV8hJIj1Ttsf7B8N1DqW/0ta7kU4oQ==",
+      "os": ["win32"],
+      "cpu": ["arm64"]
+    },
+    "@supabase/cli-windows-x64@2.118.0": {
+      "integrity": "sha512-qVAJL532b5pB8uJAPA/+3+wtwM/DX1GxwVLCSDmiT6wfUBD6OJcCYRXCEaUx0YjupyaDoPeuP4BF7IfkQTajww==",
+      "os": ["win32"],
+      "cpu": ["x64"]
+    },
+    "bcryptjs@3.0.2": {
+      "integrity": "sha512-k38b3XOZKv60C4E2hVsXTolJWfkGRMbILBIe2IBITXciy5bOsTKot5kDrf3ZfufQtQOUN5mXceUEpU1rTl9Uog==",
+      "bin": true
+    },
+    "deno@2.9.6": {
+      "integrity": "sha512-cr16GxYiUeH1juNvFTMOxt99V5QRVmANfy5UsZvE5hjC6P/o4Op/MBbRhLeBOL8WJpV6tr9hb+Kjb1MW0nEoVg==",
+      "optionalDependencies": [
+        "@deno/darwin-arm64",
+        "@deno/darwin-x64",
+        "@deno/linux-arm64-glibc",
+        "@deno/linux-x64-glibc",
+        "@deno/win32-arm64",
+        "@deno/win32-x64"
+      ],
+      "scripts": true,
+      "bin": true
+    },
+    "eciesjs@0.5.0": {
+      "integrity": "sha512-s0J9SEVYAEPg7J63GFMApLYzPH9VNIQIyC6s15JpnqVc0TqcKWdbgFlnAweEBRyMmko2dcs2sfC83Hj4J43tuA==",
+      "dependencies": [
+        "@ecies/ciphers",
+        "@noble/ciphers",
+        "@noble/curves",
+        "@noble/hashes"
+      ]
+    },
+    "hono@4.10.0": {
+      "integrity": "sha512-V/S2IyKL6fk5+bEjiQzg74r5BglqAwU20IX3WjdTUFgvmtSqAZjSxN/Zb5lr6/JXVmH0aqkqOq++3UgzOi9+4Q=="
+    },
+    "jose@6.1.0": {
+      "integrity": "sha512-TTQJyoEoKcC1lscpVDCSsVgYzUDg/0Bt3WE//WiTPK6uOCQC2KZS4MpugbMWt/zyjkopgZoXhZuCi00gLudfUA=="
+    },
+    "jose@6.2.12": {
+      "integrity": "sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw=="
+    },
+    "postgres@3.4.7": {
+      "integrity": "sha512-Jtc2612XINuBjIl/QTWsV5UvE8UHuNblcO3vVADSrKsrc6RqGX6lOW1cEo3CM2v0XG4Nat8nI+YM7/f26VxXLw=="
+    },
+    "sql.js@1.13.0": {
+      "integrity": "sha512-RJbVP1HRDlUUXahJ7VMTcu9Rm1Nzw+EBpoPr94vnbD4LwR715F3CcxE2G2k45PewcaZ57pjetYa+LoSJLAASgA=="
+    },
+    "supabase@2.118.0": {
+      "integrity": "sha512-0aPIlzBSBLwbJZCMZKD1QAwlc4xNnNvvk07QuSuuKBKzGLSeV3GovgTLlMKFTJ4JWfJubWF0URPLuPUr0kZr5g==",
+      "dependencies": [
+        "eciesjs",
+        "jose@6.2.12"
+      ],
+      "optionalDependencies": [
+        "@supabase/cli-darwin-arm64",
+        "@supabase/cli-darwin-x64",
+        "@supabase/cli-linux-arm64",
+        "@supabase/cli-linux-arm64-musl",
+        "@supabase/cli-linux-x64",
+        "@supabase/cli-linux-x64-musl",
+        "@supabase/cli-windows-arm64",
+        "@supabase/cli-windows-x64"
+      ],
+      "bin": true
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@electric-sql/pglite-socket@0.2.11",
+        "npm:@electric-sql/pglite@0.5.8",
+        "npm:deno@2.9.6",
+        "npm:supabase@2.118.0"
+      ]
+    }
+  }
+}

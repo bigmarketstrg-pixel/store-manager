@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { productApi } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../hooks/useToast.jsx'
-import * as XLSX from 'xlsx'
 
 const BUSINESSES = ['전체', '다담', '훌라', '오아시스', '이 외']
 
@@ -22,6 +21,7 @@ export default function Stock() {
   const [showModal, setShowModal] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [importing, setImporting] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const fileInputRef = useRef(null)
   const importModeRef = useRef('merge')
   const { user } = useAuth()
@@ -127,54 +127,62 @@ export default function Stock() {
     }
   }
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     if (products.length === 0) {
       toast('내보낼 재고가 없습니다.', 'error')
       return
     }
 
-    const rows = products.map((p, idx) => ({
-      No: idx + 1,
-      상품명: p.name || '',
-      사업자: p.business || '',
-      대분류: p.category || '',
-      중분류: p.subcategory || '',
-      브랜드: p.brand || '',
-      상품코드: p.product_code || '',
-      단가: p.cost_price || 0,
-      판매가: p.sale_price || 0,
-      재고: p.stock || 0,
-      비고: p.note || '',
-      메모: p.memo || '',
-    }))
-    const sheet = XLSX.utils.json_to_sheet(rows)
-    sheet['!cols'] = [
-      { wch: 6 },
-      { wch: 32 },
-      { wch: 12 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 18 },
-      { wch: 16 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 10 },
-      { wch: 24 },
-      { wch: 28 },
-    ]
-    const book = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(book, sheet, '재고')
+    setExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const rows = products.map((p, idx) => ({
+        No: idx + 1,
+        상품명: p.name || '',
+        사업자: p.business || '',
+        대분류: p.category || '',
+        중분류: p.subcategory || '',
+        브랜드: p.brand || '',
+        상품코드: p.product_code || '',
+        단가: p.cost_price || 0,
+        판매가: p.sale_price || 0,
+        재고: p.stock || 0,
+        비고: p.note || '',
+        메모: p.memo || '',
+      }))
+      const sheet = XLSX.utils.json_to_sheet(rows)
+      sheet['!cols'] = [
+        { wch: 6 },
+        { wch: 32 },
+        { wch: 12 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 10 },
+        { wch: 24 },
+        { wch: 28 },
+      ]
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, sheet, '재고')
 
-    const filterLabel = [
-      business !== '전체' ? business : '전체',
-      category || '',
-      subcategory || '',
-      brand || '',
-      q || '',
-    ].filter(Boolean).join('_')
-    const safeLabel = filterLabel.replace(/[\\/:*?"<>|]/g, '-')
-    const date = new Date().toISOString().slice(0, 10)
-    XLSX.writeFile(book, `재고목록_${safeLabel || '전체'}_${date}.xlsx`)
+      const filterLabel = [
+        business !== '전체' ? business : '전체',
+        category || '',
+        subcategory || '',
+        brand || '',
+        q || '',
+      ].filter(Boolean).join('_')
+      const safeLabel = filterLabel.replace(/[\\/:*?"<>|]/g, '-')
+      const date = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(book, `재고목록_${safeLabel || '전체'}_${date}.xlsx`)
+    } catch {
+      toast('엑셀 다운로드에 실패했습니다.', 'error')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const fmt = n => n?.toLocaleString() || '0'
@@ -194,11 +202,11 @@ export default function Stock() {
           <button className="btn btn-ghost" disabled={importing} onClick={() => startImport('merge')}>
             {importing ? '가져오는 중...' : 'DB 가져오기'}
           </button>
-          <button className="btn btn-danger" disabled={importing} onClick={() => startImport('replace')}>
+          {isAdmin && <button className="btn btn-danger" disabled={importing} onClick={() => startImport('replace')}>
             DB 전체교체
-          </button>
-          <button className="btn btn-ghost" disabled={loading || products.length === 0} onClick={exportExcel}>
-            엑셀 다운로드
+          </button>}
+          <button className="btn btn-ghost" disabled={loading || exporting || products.length === 0} onClick={exportExcel}>
+            {exporting ? '준비 중...' : '엑셀 다운로드'}
           </button>
           <button className="btn btn-primary" onClick={() => openEdit(null)}>+ 상품 추가</button>
         </div>

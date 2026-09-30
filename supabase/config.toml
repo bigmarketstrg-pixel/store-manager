@@ -1,0 +1,2 @@
+[functions.store-manager-api-v2]
+verify_jwt = false

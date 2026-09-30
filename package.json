@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "scripts": {
+    "check:api": "deno check --node-modules-dir=manual supabase/functions/store-manager-api-v2/index.ts",
+    "test:api": "deno test --node-modules-dir=manual --allow-env supabase/functions/store-manager-api-v2/index.test.ts",
+    "test:integration": "node scripts/local-api-test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11",
+    "deno": "2.9.6",
+    "supabase": "2.118.0"
+  }
+}

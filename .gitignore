@@ -1,3 +1,16 @@
 frontend/node_modules/
+node_modules/
 frontend/dist/
 frontend/.wrangler/
+.tools/
+cloudflare-api/.venv/
+cloudflare-api/.venv-workers/
+cloudflare-api/.wrangler/
+cloudflare-api/python_modules/
+cloudflare-api/.dev.vars*
+__pycache__/
+*.pyc
+backups/
+supabase/.temp/
+supabase/functions/.env*
+!supabase/functions/.env.example
