@@ -2,8 +2,46 @@ import type { Hono } from "npm:hono@4.10.0";
 import type { AppUser } from "../_shared/auth.ts";
 import { sql } from "../_shared/db.ts";
 import { asDate, asId, asInt, cleanBusiness, cleanText, HttpError, pick } from "../_shared/http.ts";
+import type { TransactionSql } from "npm:postgres@3.4.7";
+import { updateSale } from "../_shared/sale-sync.ts";
 
 type Api = Hono<{ Variables: { user: AppUser } }>;
+
+async function updateHistory(tx: TransactionSql<Record<string, never>>, id: number, body: Record<string, unknown>) {
+  const initial = (await tx`SELECT product_id, sale_id FROM public.stock_history WHERE id = ${id}`)[0];
+  if (!initial) throw new HttpError(404, "입출기록을 찾을 수 없습니다.");
+  if (initial.sale_id) {
+    await updateSale(tx, initial.sale_id, body, true);
+  } else {
+    if (initial.product_id) await tx`SELECT id FROM public.products WHERE id = ${initial.product_id} FOR UPDATE`;
+    const history = (await tx`SELECT * FROM public.stock_history WHERE id = ${id} FOR UPDATE`)[0];
+    if (!history) throw new HttpError(404, "입출기록을 찾을 수 없습니다.");
+    const oldQuantity = asInt(history.quantity);
+    const nextQuantity = Object.hasOwn(body, "quantity") ? asInt(body.quantity) : oldQuantity;
+    const nextType = String(body.io_type ?? history.io_type);
+    if (nextQuantity < 0) throw new HttpError(400, "수량은 0보다 작을 수 없습니다.");
+    if (!["입고", "출고"].includes(nextType)) throw new HttpError(400, "구분은 입고 또는 출고만 가능합니다.");
+    if (history.product_id && (oldQuantity !== nextQuantity || history.io_type !== nextType)) {
+      const product = (await tx`SELECT id, name, stock FROM public.products WHERE id = ${history.product_id}`)[0];
+      if (product) {
+        const restored = product.stock + (history.io_type === "입고" ? -oldQuantity : oldQuantity);
+        const stock = restored + (nextType === "입고" ? nextQuantity : -nextQuantity);
+        if (stock < 0) throw new HttpError(400, `${product.name} 재고가 부족해 수정할 수 없습니다.`);
+        await tx`UPDATE public.products SET stock = ${stock}, updated_at = now() WHERE id = ${product.id}`;
+      }
+    }
+    const changes = pick(body, ["transaction_no", "record_date", "product_name", "business", "category",
+      "subcategory", "brand", "io_type", "quantity", "cost_price", "memo"]);
+    if (Object.hasOwn(changes, "record_date")) changes.record_date = asDate(changes.record_date);
+    if (Object.hasOwn(changes, "quantity")) changes.quantity = nextQuantity;
+    if (Object.hasOwn(changes, "cost_price")) {
+      changes.cost_price = asInt(changes.cost_price);
+      if (Number(changes.cost_price) < 0) throw new HttpError(400, "원가단가는 0 이상이어야 합니다.");
+    }
+    if (Object.keys(changes).length) await tx`UPDATE public.stock_history SET ${tx(changes)} WHERE id = ${id}`;
+  }
+  return (await tx`SELECT *, record_date::text AS record_date FROM public.stock_history WHERE id = ${id}`)[0];
+}
 
 function transactionNo(prefix: "IN" | "OUT"): string {
   const now = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
@@ -135,7 +173,7 @@ export function registerStockRoutes(app: Api) {
     if (q.end) where = sql`${where} AND record_date <= ${asDate(q.end)}`;
     return c.json(await sql`SELECT id, transaction_no, record_date::text AS record_date,
       product_id, product_name, business, category, subcategory, brand, io_type,
-      quantity, cost_price, memo, created_by, created_at
+      quantity, cost_price, memo, created_by, created_at, sale_id
       FROM public.stock_history WHERE ${where}
       ORDER BY record_date DESC, created_at DESC, id DESC`);
   });
@@ -143,37 +181,24 @@ export function registerStockRoutes(app: Api) {
   app.patch("/api/products/history/:id", async (c) => {
     const id = asId(c.req.param("id"));
     const body = await c.req.json();
-    const result = await sql.begin(async (tx) => {
-      const history = (await tx`SELECT * FROM public.stock_history WHERE id = ${id} FOR UPDATE`)[0];
-      if (!history) throw new HttpError(404, "입출기록을 찾을 수 없습니다.");
-      const oldQuantity = asInt(history.quantity);
-      const nextQuantity = Object.hasOwn(body, "quantity") ? asInt(body.quantity) : oldQuantity;
-      const nextType = String(body.io_type ?? history.io_type);
-      if (nextQuantity < 0) throw new HttpError(400, "수량은 0보다 작을 수 없습니다.");
-      if (!["입고", "출고"].includes(nextType)) throw new HttpError(400, "구분은 입고 또는 출고만 가능합니다.");
-      if (history.product_id && (oldQuantity !== nextQuantity || history.io_type !== nextType)) {
-        const product = (await tx`SELECT id, name, stock FROM public.products
-          WHERE id = ${history.product_id} FOR UPDATE`)[0];
-        if (product) {
-          const restored = product.stock + (history.io_type === "입고" ? -oldQuantity : oldQuantity);
-          const stock = restored + (nextType === "입고" ? nextQuantity : -nextQuantity);
-          if (stock < 0) throw new HttpError(400, `${product.name} 재고가 부족해 수정할 수 없습니다.`);
-          await tx`UPDATE public.products SET stock = ${stock}, updated_at = now() WHERE id = ${product.id}`;
-        }
+    return c.json(await sql.begin(tx => updateHistory(tx, id, body)));
+  });
+
+  app.post("/api/products/history/batch", async (c) => {
+    const body = await c.req.json();
+    if (!Array.isArray(body.items) || !body.items.length || body.items.length > 500) {
+      throw new HttpError(400, "수정할 입출기록을 확인해주세요.");
+    }
+    const ids = body.items.map((item: Record<string, unknown>) => asId(String(item.id)));
+    if (new Set(ids).size !== ids.length) throw new HttpError(400, "중복된 입출기록입니다.");
+    return c.json(await sql.begin(async tx => {
+      await tx`SELECT id FROM public.products WHERE id IN (
+        SELECT product_id FROM public.stock_history WHERE id IN ${tx(ids)}) ORDER BY id FOR UPDATE`;
+      const updated = [];
+      for (let index = 0; index < ids.length; index++) {
+        updated.push(await updateHistory(tx, ids[index], body.items[index]));
       }
-      const changes = pick(body, [
-        "transaction_no", "record_date", "product_name", "business", "category",
-        "subcategory", "brand", "io_type", "quantity", "cost_price", "memo",
-      ]);
-      if (Object.hasOwn(changes, "record_date")) changes.record_date = asDate(changes.record_date);
-      if (Object.hasOwn(changes, "quantity")) changes.quantity = nextQuantity;
-      if (Object.hasOwn(changes, "cost_price")) changes.cost_price = asInt(changes.cost_price);
-      if (Object.keys(changes).length) await tx`UPDATE public.stock_history SET ${tx(changes)} WHERE id = ${id}`;
-      return (await tx`SELECT id, transaction_no, record_date::text AS record_date,
-        product_id, product_name, business, category, subcategory, brand, io_type,
-        quantity, cost_price, memo, created_by, created_at
-        FROM public.stock_history WHERE id = ${id}`)[0];
-    });
-    return c.json(result);
+      return updated;
+    }));
   });
 }

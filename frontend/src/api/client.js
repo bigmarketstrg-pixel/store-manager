@@ -48,11 +48,13 @@ export const productApi = {
   importDb: (form) => api.post('/api/products/import-db', form),
   history: (params) => api.get('/api/products/history/all', { params }),
   updateHistory: (id, data) => api.patch(`/api/products/history/${id}`, data),
+  updateHistories: (items) => api.post('/api/products/history/batch', { items }),
 }
 
 export const saleApi = {
   create: (data) => api.post('/api/sales', data),
   list: (params) => api.get('/api/sales', { params }),
+  update: (id, data) => api.patch(`/api/sales/${id}`, data),
   delete: (id) => api.delete(`/api/sales/${id}`),
   summary: (params) => api.get('/api/sales/summary', { params }),
   summaryDetails: (params) => api.get('/api/sales/summary/details', { params }),

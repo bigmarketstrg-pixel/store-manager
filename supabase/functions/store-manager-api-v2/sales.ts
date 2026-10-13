@@ -2,6 +2,7 @@ import type { Hono } from "npm:hono@4.10.0";
 import type { AppUser } from "../_shared/auth.ts";
 import { sql } from "../_shared/db.ts";
 import { asDate, asId, asInt, cleanText, HttpError } from "../_shared/http.ts";
+import { lockSale, saleNumbers, updateSale } from "../_shared/sale-sync.ts";
 
 type Api = Hono<{ Variables: { user: AppUser } }>;
 const groups = new Set(["day", "month", "business", "category", "subcategory", "brand", "product", "channel", "payment"]);
@@ -50,19 +51,20 @@ export function registerSaleRoutes(app: Api) {
           throw new HttpError(400, `${existing.name} 재고 부족 (현재: ${existing.stock}개)`);
         }
         const memo = item.memo ?? null;
-        await tx`INSERT INTO public.sales (transaction_no, sale_date, product_id,
+        const amounts = saleNumbers(quantity, product.cost_price, price);
+        const sale = (await tx`INSERT INTO public.sales (transaction_no, sale_date, product_id,
           product_name, business, category, subcategory, brand, cost_price, sale_price,
           quantity, total, channel, payment, memo, created_by)
           VALUES (${no}, ${date}, ${id}, ${product.name}, ${product.business},
           ${product.category}, ${product.subcategory}, ${product.brand}, ${product.cost_price},
-          ${price}, ${quantity}, ${price * quantity}, ${cleanText(item.channel)},
-          ${cleanText(item.payment)}, ${memo}, ${c.get("user").id})`;
+          ${price}, ${quantity}, ${amounts.total}, ${cleanText(item.channel)},
+          ${cleanText(item.payment)}, ${memo}, ${c.get("user").id}) RETURNING id`)[0];
         await tx`INSERT INTO public.stock_history (transaction_no, record_date,
           product_id, product_name, business, category, subcategory, brand, io_type,
-          quantity, cost_price, memo, created_by)
+          quantity, cost_price, memo, created_by, sale_id)
           VALUES (${no}, ${date}, ${id}, ${product.name}, ${product.business},
           ${product.category}, ${product.subcategory}, ${product.brand}, '출고',
-          ${quantity}, ${product.cost_price}, ${memo}, ${c.get("user").id})`;
+          ${quantity}, ${product.cost_price}, ${memo}, ${c.get("user").id}, ${sale.id})`;
       }
       return { ok: true, transaction_no: no, count: body.items.length };
     });
@@ -85,19 +87,19 @@ export function registerSaleRoutes(app: Api) {
       FROM public.sales WHERE ${where} ORDER BY sale_date DESC, id DESC LIMIT ${limit}`);
   });
 
+  app.patch("/api/sales/:id", async (c) => {
+    const id = asId(c.req.param("id"));
+    const body = await c.req.json();
+    return c.json(await sql.begin(tx => updateSale(tx, id, body)));
+  });
+
   app.delete("/api/sales/:id", async (c) => {
     const id = asId(c.req.param("id"));
     await sql.begin(async (tx) => {
-      const sale = (await tx`SELECT * FROM public.sales WHERE id = ${id} FOR UPDATE`)[0];
-      if (!sale) throw new HttpError(404, "판매 기록을 찾을 수 없습니다.");
-      if (sale.product_id) await tx`UPDATE public.products SET stock = stock + ${sale.quantity},
+      const { sale, history } = await lockSale(tx, id);
+      if (sale.product_id) await tx`UPDATE public.products SET stock = stock + ${history.quantity},
         updated_at = now() WHERE id = ${sale.product_id}`;
-      await tx`DELETE FROM public.stock_history WHERE id = (
-        SELECT id FROM public.stock_history WHERE transaction_no = ${sale.transaction_no}
-          AND product_id = ${sale.product_id} AND io_type = '출고'
-          AND quantity = ${sale.quantity} AND cost_price = ${sale.cost_price}
-          AND memo IS NOT DISTINCT FROM ${sale.memo}
-        ORDER BY id ASC LIMIT 1)`;
+      await tx`DELETE FROM public.stock_history WHERE sale_id = ${id}`;
       await tx`DELETE FROM public.sales WHERE id = ${id}`;
     });
     return c.json({ ok: true });

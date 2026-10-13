@@ -160,10 +160,10 @@ export default function InOut() {
         <HistoryGroupModal
           group={selectedGroup}
           onClose={() => setSelectedGroup(null)}
-          onSave={(updatedRows) => {
-            setRecords(prev => prev.map(record => updatedRows.find(updated => updated.id === record.id) || record))
+          onSave={() => {
             setSelectedGroup(null)
             toast('입출기록 수정 완료')
+            load()
           }}
           toast={toast}
         />
@@ -174,8 +174,10 @@ export default function InOut() {
 }
 
 function HistoryGroupModal({ group, onClose, onSave, toast }) {
+  const [saving, setSaving] = useState(false)
   const [forms, setForms] = useState(group.items.map(record => ({
     id: record.id,
+    sale_id: record.sale_id,
     record_date: record.record_date || '',
     transaction_no: record.transaction_no || '',
     io_type: record.io_type || '입고',
@@ -193,26 +195,27 @@ function HistoryGroupModal({ group, onClose, onSave, toast }) {
   }
 
   const save = async () => {
+    if (saving) return
+    setSaving(true)
     try {
-      const updatedRows = []
-      for (const form of forms) {
+      const items = forms.map(form => {
         const payload = {
           ...form,
           quantity: Number(form.quantity) || 0,
           cost_price: Number(form.cost_price) || 0,
         }
-        delete payload.id
-        const r = await productApi.updateHistory(form.id, payload)
-        updatedRows.push(r.data)
-      }
-      onSave(updatedRows)
+        delete payload.sale_id
+        return payload
+      })
+      const r = await productApi.updateHistories(items)
+      onSave(r.data)
     } catch (err) {
       toast(err.response?.data?.detail || '입출기록 수정 실패', 'error')
-    }
+    } finally { setSaving(false) }
   }
 
   return (
-    <div className="modal-bg" onClick={onClose}>
+    <div className="modal-bg" onClick={() => { if (!saving) onClose() }}>
       <div className="modal" style={{ width: 'min(1180px, 96vw)' }} onClick={e => e.stopPropagation()}>
         <h2>입출기록 상세</h2>
         <div style={{ marginBottom: 16, color: 'var(--muted)', fontSize: 13 }}>
@@ -238,16 +241,16 @@ function HistoryGroupModal({ group, onClose, onSave, toast }) {
               <tr>
                 <th>날짜</th><th>거래번호</th><th>구분</th><th>상품명</th><th>사업자</th>
                 <th>대분류</th><th>중분류</th><th>브랜드</th>
-                <th className="num">수량</th><th className="num">단가</th><th>메모</th>
+                <th className="num">수량</th><th className="num">원가단가</th><th>메모</th>
               </tr>
             </thead>
             <tbody>
               {forms.map((form, index) => (
                 <tr key={form.id}>
                   <td><input className="input" type="date" value={form.record_date} onChange={e => set(index, 'record_date', e.target.value)} /></td>
-                  <td><input className="input" value={form.transaction_no} onChange={e => set(index, 'transaction_no', e.target.value)} /></td>
+                  <td><input className="input" readOnly={!!form.sale_id} value={form.transaction_no} onChange={e => set(index, 'transaction_no', e.target.value)} /></td>
                   <td>
-                    <select className="input" value={form.io_type} onChange={e => set(index, 'io_type', e.target.value)}>
+                    <select className="input" disabled={!!form.sale_id} value={form.io_type} onChange={e => set(index, 'io_type', e.target.value)}>
                       <option>입고</option>
                       <option>출고</option>
                     </select>
@@ -271,8 +274,8 @@ function HistoryGroupModal({ group, onClose, onSave, toast }) {
         </div>
 
         <div className="flex gap-8 mt-24">
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>닫기</button>
-          <button className="btn btn-primary" style={{ flex: 2 }} onClick={save}>수정 저장</button>
+          <button className="btn btn-ghost" disabled={saving} style={{ flex: 1 }} onClick={onClose}>닫기</button>
+          <button className="btn btn-primary" disabled={saving} style={{ flex: 2 }} onClick={save}>{saving ? '저장 중...' : '수정 저장'}</button>
         </div>
       </div>
     </div>

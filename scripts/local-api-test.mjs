@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { PGlite } from '@electric-sql/pglite'
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket'
 
@@ -53,6 +54,24 @@ CREATE TABLE handover_notes (id SERIAL PRIMARY KEY, note_date DATE NOT NULL,
   created_at TIMESTAMP DEFAULT now());
 `
 await db.exec(schema)
+const migration = await readFile('supabase/migrations/20261013030000_link_sale_history.sql', 'utf8')
+await db.exec(`INSERT INTO sales (transaction_no, sale_date, product_name, cost_price, sale_price, quantity, total)
+  VALUES ('LEGACY-UNIQUE', '2026-01-01', 'Legacy', 100, 300, 1, 300),
+    ('LEGACY-AMBIGUOUS', '2026-01-01', 'Duplicate', 100, 300, 1, 300),
+    ('LEGACY-AMBIGUOUS', '2026-01-01', 'Duplicate', 100, 300, 1, 300);
+  INSERT INTO stock_history (transaction_no, record_date, product_name, io_type, quantity, cost_price)
+  VALUES ('LEGACY-UNIQUE', '2026-01-01', 'Legacy', '출고', 1, 200),
+    ('LEGACY-AMBIGUOUS', '2026-01-01', 'Duplicate', '출고', 1, 100),
+    ('LEGACY-AMBIGUOUS', '2026-01-01', 'Duplicate', '출고', 1, 100),
+    ('LEGACY-UNIQUE', '2026-01-01', 'Legacy', '입고', 1, 100);`)
+await db.exec(migration)
+await db.exec(migration)
+const linked = (await db.query('SELECT sale_id, cost_price FROM stock_history WHERE sale_id IS NOT NULL')).rows
+if (linked.length !== 1 || linked[0].sale_id !== 1 || linked[0].cost_price !== 200) {
+  throw new Error('Legacy backfill guessed an ambiguous link or overwrote history')
+}
+await db.exec('TRUNCATE sales, stock_history RESTART IDENTITY')
+console.log('Legacy migration: unique links, ambiguity safety, data preservation and repeatability passed')
 
 const server = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 55433 })
 await server.start()

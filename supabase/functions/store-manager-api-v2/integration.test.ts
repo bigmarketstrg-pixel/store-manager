@@ -9,6 +9,14 @@ function assert(condition: unknown, detail: string): asserts condition {
   if (!condition) throw new Error(detail);
 }
 
+async function expectError(method: string, path: string, token: string, body: unknown, status = 400) {
+  const response = await app.request(base + path, { method,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body) });
+  await response.text();
+  assert(response.status === status, `${path} rejects invalid update (${response.status})`);
+}
+
 async function request(method: string, path: string, token?: string, body?: unknown) {
   const response = await app.request(base + path, {
     method,
@@ -215,4 +223,72 @@ Deno.test("revenue drilldown totals, exact groups and complete pagination", asyn
     headers: { Authorization: "Bearer " + token },
   });
   assert(invalid.status === 400, "unknown grouping is rejected");
+  await sql`DELETE FROM public.sales WHERE sale_date BETWEEN '2026-07-01' AND '2026-08-31'`;
+});
+
+Deno.test("bidirectional sale/history edits, line identity, stock and atomic rollback", async () => {
+  const user = (await sql`SELECT id FROM public.users WHERE username = 'test-admin'`)[0];
+  const { createToken } = await import("../_shared/auth.ts");
+  const token = await createToken({ id: user.id, username: "test-admin", name: "Tester", role: "admin", is_active: 1 });
+  const product = await request("POST", "/api/products", token, {
+    name: "Sync product", business: "훌라", category: "악기", brand: "Sync", stock: 20, cost_price: 100, sale_price: 300,
+  });
+  const stock = async () => (await request("GET", `/api/products/${product.id}`, token)).stock;
+  const created = await request("POST", "/api/sales", token, {
+    sale_date: "2026-10-01", items: [1, 1].map(quantity => ({ product_id: product.id, quantity, sale_price: 300 })),
+  });
+  const lines = (await request("GET", "/api/sales", token)).filter(
+    (row: { transaction_no: string }) => row.transaction_no === created.transaction_no);
+  const a = lines[0], b = lines[1];
+  const histories = () => request("GET", "/api/products/history/all", token);
+  const historyFor = async (id: number) => (await histories()).find((row: { sale_id: number }) => row.sale_id === id);
+  const saleFor = async (id: number) => (await request("GET", "/api/sales", token)).find((row: { id: number }) => row.id === id);
+  const ha = await historyFor(a.id), hb = await historyFor(b.id);
+  assert(ha.id !== hb.id && await stock() === 18, "identical sale lines have separate stable links");
+  await request("PATCH", `/api/products/history/${ha.id}`, token, {
+    record_date: "2026-10-02", quantity: 3, cost_price: 150, product_name: "Edited snapshot",
+    business: "다담", category: "수정분류", subcategory: "수정중분류", brand: "Edited", memo: "History edit",
+  });
+  const afterHistory = await saleFor(a.id);
+  assert(afterHistory.quantity === 3 && afterHistory.cost_price === 150 && afterHistory.total === 900 &&
+    afterHistory.sale_date === "2026-10-02" && afterHistory.business === "다담" && afterHistory.brand === "Edited" &&
+    afterHistory.product_name === "Edited snapshot" && afterHistory.memo === "History edit", "history updates matching sale fields and total");
+  assert((await saleFor(b.id)).cost_price === 100 && (await historyFor(b.id)).quantity === 1, "duplicate sibling unchanged");
+  assert(await stock() === 16, "history edit adjusts inventory only once");
+  const aggregate = await request("GET", "/api/sales/summary?group_by=business&start=2026-10-02&end=2026-10-02", token);
+  assert(aggregate[0].cost_total === 450 && aggregate[0].profit === 450, "profit uses corrected historical cost");
+  const afterSale = await request("PATCH", `/api/sales/${a.id}`, token, {
+    sale_date: "2026-10-03", quantity: 2, cost_price: 175, sale_price: 400, channel: "온라인", payment: "계좌", memo: "Sale edit",
+  });
+  const history = await historyFor(a.id);
+  assert(afterSale.total === 800 && afterSale.channel === "온라인" && afterSale.payment === "계좌", "sale recalculates total");
+  assert(history.quantity === 2 && history.cost_price === 175 && history.record_date === "2026-10-03" &&
+    history.memo === "Sale edit" && await stock() === 17, "sale updates history and inventory once");
+  const catalog = await request("GET", `/api/products/${product.id}`, token);
+  assert(catalog.cost_price === 100 && catalog.name === "Sync product", "historical corrections do not rewrite catalog snapshots");
+  for (const payload of [{ quantity: 1000 }, { quantity: 0 }, { cost_price: -1 }, { sale_price: -1 },
+    { quantity: 1.5 }, { sale_price: 2147483647, quantity: 2 }]) {
+    await expectError("PATCH", `/api/sales/${a.id}`, token, payload);
+  }
+  await expectError("PATCH", `/api/products/history/${ha.id}`, token, { io_type: "입고" });
+  await expectError("PATCH", `/api/products/history/${ha.id}`, token, { transaction_no: "OTHER" });
+  assert(await stock() === 17 && (await saleFor(a.id)).total === 800 && (await historyFor(a.id)).quantity === 2, "failed edits leave all records untouched");
+  await expectError("POST", "/api/products/history/batch", token, { items: [
+    { id: ha.id, cost_price: 250, quantity: 1 }, { id: hb.id, quantity: 1000 },
+  ] });
+  assert(await stock() === 17 && (await saleFor(a.id)).cost_price === 175 && (await historyFor(a.id)).quantity === 2, "failed group rolls back earlier lines and inventory");
+  const batch = await request("POST", "/api/products/history/batch", token, { items: [
+    { id: ha.id, cost_price: 200 }, { id: hb.id, cost_price: 250 },
+  ] });
+  assert(batch.length === 2 && (await saleFor(a.id)).cost_price === 200 && (await saleFor(b.id)).cost_price === 250, "group updates both matching sales atomically");
+  await request("DELETE", `/api/sales/${a.id}`, token);
+  assert(await stock() === 19 && !(await historyFor(a.id)) && !!(await historyFor(b.id)), "deletion after metadata edits restores correct quantity and only its history");
+  await request("DELETE", `/api/products/${product.id}`, token);
+  await request("PATCH", `/api/sales/${b.id}`, token, { cost_price: 80 });
+  assert((await historyFor(b.id)).cost_price === 80 && (await saleFor(b.id)).product_id === null, "deleted catalog products retain editable historical linkage");
+  await request("DELETE", `/api/sales/${b.id}`, token);
+  assert(!(await historyFor(b.id)), "deleted product sale can still be canceled");
+  const anonymous = await app.request(base + `/api/sales/${b.id}`, { method: "PATCH", body: "{}" });
+  await anonymous.text();
+  assert(anonymous.status === 401, "sale edits require employee authentication");
 });

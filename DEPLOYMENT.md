@@ -31,6 +31,15 @@ npm run build
 
 ## API deployment
 
+Sales and stock history share a stable `stock_history.sale_id` link. Before deploying an API
+that uses this column, apply `supabase/migrations/20261013030000_link_sale_history.sql` to the
+existing database. It is additive and repeatable; only unique legacy pairs are linked.
+It does not overwrite prices, quantities, dates or other business fields. Audit any unlinked
+sales before allowing edits; the API rejects edits/cancellation when the link is missing.
+Edits from either screen update both snapshots and the stock delta in one transaction.
+History group saves also run in one transaction. Catalog cost changes remain independent
+of historical sales costs; wholesale records are not retail sales.
+
 Use the Supabase CLI on an authenticated maintenance computer:
 
 ```powershell
@@ -50,6 +59,7 @@ Cloudflare Pages builds the frontend from GitHub after a push. Its build command
 ## Data and rollback
 
 - Before infrastructure changes, create an external PostgreSQL dump and check it can be read with `pg_restore --list`. Keep dumps outside Git; `backups/` is ignored.
+- `node scripts/backup-public.mjs` additionally saves a consistent JSON snapshot of all nine business tables, column/constraint metadata and sequence values via the authenticated management CLI. It validates the saved file and prints only counts and a checksum. This contains employee password hashes and must remain private in ignored `backups/`; it supplements, rather than replaces, a full PostgreSQL dump.
 - The new and old backends use the same Supabase database. Do not restore or re-import the dump as part of this frontend cutover.
 - To revert the frontend, first resume the suspended Render service, then restore the former Render URL in `frontend/.env.production` and redeploy Cloudflare Pages. Render must be running for that rollback path.
 - Do not delete the suspended Render service or the checked PostgreSQL dump until the new path has been used long enough to rule out operational regressions.
