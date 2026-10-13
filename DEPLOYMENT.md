@@ -18,6 +18,7 @@ npm ci
 npm run check:api
 npm run test:api
 npm run test:integration
+npm run test:revenue-excel
 ```
 
 The integration test uses an in-memory PostgreSQL engine and synthetic records; it does not connect to the production database. Build the frontend separately:

@@ -145,6 +145,8 @@ Deno.test("local PostgreSQL stock, sales and wholesale flow", async () => {
     (row: { transaction_no: string }) => row.transaction_no === multiline.transaction_no,
   );
   assert(lines.length === 2, "multi-line sale list");
+  const multiSummary = await request("GET", "/api/sales/summary?group_by=business", token);
+  assert(multiSummary[0].count === 1 && multiSummary[0].line_count === 2, "one transaction with two sale lines");
   const second = lines.find((row: { quantity: number }) => row.quantity === 2);
   await request("DELETE", `/api/sales/${second.id}`, token);
   assert(await stock() === 6, "one sale line restores only its stock");
@@ -152,4 +154,65 @@ Deno.test("local PostgreSQL stock, sales and wholesale flow", async () => {
     (row: { transaction_no: string }) => row.transaction_no === multiline.transaction_no,
   );
   assert(remaining.length === 1 && remaining[0].quantity === 1, "one sale line keeps matching history");
+});
+
+Deno.test("revenue drilldown totals, exact groups and complete pagination", async () => {
+  const user = (await sql`SELECT id FROM public.users WHERE username = 'test-admin'`)[0];
+  const { createToken } = await import("../_shared/auth.ts");
+  const token = await createToken({ id: user.id, username: "test-admin", name: "Tester", role: "admin", is_active: 1 });
+  await sql`INSERT INTO public.sales (transaction_no, sale_date, product_name, business,
+    category, subcategory, brand, cost_price, sale_price, quantity, total, channel, payment, created_by)
+    VALUES
+      ('GROUP-1', '2026-07-01', 'Exact', '훌라', NULL, NULL, 'Exact', 40, 100, 2, 200, NULL, NULL, ${user.id}),
+      ('GROUP-1', '2026-07-01', 'Exact Plus', '훌라', '', '', 'Exact Plus', 100, 300, 1, 300, '', '', ${user.id}),
+      ('GROUP-1', '2026-07-01', 'Other', '다담', '악기', '현악기', 'Exact', 200, 500, 1, 500, '매장', '카드', ${user.id}),
+      ('GROUP-2', '2026-07-02', 'Exact', '훌라', '악기', '현악기', 'Exact', 100, 400, 1, 400, '매장', '카드', ${user.id}),
+      ('', '2026-07-03', 'Blank 1', '훌라', NULL, NULL, NULL, 10, 50, 1, 50, NULL, NULL, ${user.id}),
+      ('', '2026-07-03', 'Blank 2', '훌라', '', '', '', 20, 70, 1, 70, '', '', ${user.id}),
+      ('GROUP-3', '2026-08-01', 'August', '훌라', '악기', '현악기', 'Exact', 50, 200, 1, 200, '매장', '카드', ${user.id})`;
+  const range = "start=2026-07-01&end=2026-07-31";
+  const businesses = await request("GET", "/api/sales/summary?group_by=business&" + range, token);
+  assert(businesses[0].overall_count === 4, "overall transaction count excludes cross-business duplicates");
+  const hula = businesses.find((row: { key: string }) => row.key === "훌라");
+  assert(hula.count === 4 && hula.line_count === 5 && hula.total === 1020, "business totals");
+  for (const group of ["day", "month", "business", "category", "subcategory", "brand", "product", "channel", "payment"]) {
+    const rows = await request("GET", "/api/sales/summary?group_by=" + group + "&" + range, token);
+    for (const row of rows) {
+      const details = await request("GET", "/api/sales/summary/details?group_by=" + group +
+        "&group_key=" + encodeURIComponent(row.key) + "&" + range, token);
+      for (const field of ["count", "line_count", "quantity", "total", "cost_total", "profit"]) {
+        assert(details.summary[field] === row[field], group + " detail matches summary: " + field);
+      }
+      assert(details.items.length === row.line_count, "all exact group lines");
+      assert(details.items.every((item: { staff_name: string }) => item.staff_name === "Tester"), "staff names included");
+    }
+  }
+  const baseDetails = "/api/sales/summary/details?group_by=business&group_key=" + encodeURIComponent("훌라") +
+    "&" + range + "&limit=2";
+  const first = await request("GET", baseDetails, token);
+  await sql`INSERT INTO public.sales (transaction_no, sale_date, business, sale_price, quantity, total)
+    VALUES ('LATER', '2026-07-31', '훌라', 99, 1, 99)`;
+  const second = await request("GET", baseDetails + "&snapshot_id=" + first.snapshot_id +
+    "&before_id=" + first.next_before_id, token);
+  const third = await request("GET", baseDetails + "&snapshot_id=" + first.snapshot_id +
+    "&before_id=" + second.next_before_id, token);
+  const ids = [...first.items, ...second.items, ...third.items].map((row: { id: number }) => row.id);
+  assert(ids.length === 5 && new Set(ids).size === 5 && !third.next_before_id, "stable cursor pages without duplicates");
+  assert(second.summary.total === first.summary.total, "new sale excluded from existing snapshot");
+  const filtered = await request("GET", "/api/sales/summary?group_by=month&" + range +
+    "&business=" + encodeURIComponent("다담"), token);
+  assert(filtered.length === 1 && filtered[0].total === 500 && filtered[0].key === "2026-07", "business and date filters");
+  await sql`INSERT INTO public.sales (transaction_no, sale_date, business, brand, sale_price, quantity, total)
+    SELECT 'PAGE-' || n, '2026-08-10', '다담', 'Pagination', 10, 1, 10 FROM generate_series(1, 1005) n`;
+  const exportPath = "/api/sales/summary/details?group_by=brand&group_key=Pagination&limit=1000";
+  const exportFirst = await request("GET", exportPath, token);
+  const exportSecond = await request("GET", exportPath + "&snapshot_id=" + exportFirst.snapshot_id +
+    "&before_id=" + exportFirst.next_before_id, token);
+  assert(exportFirst.items.length === 1000 && exportSecond.items.length === 5 && !exportSecond.next_before_id,
+    "Excel can retrieve more than the old 1000-row cap");
+  assert(exportFirst.summary.count === 1005 && exportFirst.summary.total === 10050, "full export totals");
+  const invalid = await app.request(base + "/api/sales/summary/details?group_by=invalid&group_key=test", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  assert(invalid.status === 400, "unknown grouping is rejected");
 });

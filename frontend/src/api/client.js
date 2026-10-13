@@ -55,6 +55,7 @@ export const saleApi = {
   list: (params) => api.get('/api/sales', { params }),
   delete: (id) => api.delete(`/api/sales/${id}`),
   summary: (params) => api.get('/api/sales/summary', { params }),
+  summaryDetails: (params) => api.get('/api/sales/summary/details', { params }),
 }
 
 export const wholesaleApi = {

@@ -6,13 +6,26 @@ import { asDate, asId, asInt, cleanText, HttpError } from "../_shared/http.ts";
 type Api = Hono<{ Variables: { user: AppUser } }>;
 const groups = new Set(["day", "month", "business", "category", "subcategory", "brand", "product", "channel", "payment"]);
 
-function groupKey(sale: Record<string, unknown>, group: string): string {
-  if (group === "day") return String(sale.sale_date);
-  if (group === "month") return String(sale.sale_date).slice(0, 7);
-  if (group === "product") return String(sale.product_name ?? "");
-  const field = group === "business" || group === "channel" || group === "payment" ? group : group;
-  return String(sale[field] || (field === "business" || field === "channel" || field === "payment" ? "기타" : "미분류"));
+function groupExpression(group: string) {
+  if (group === "day") return sql`sale_date::text`;
+  if (group === "month") return sql`to_char(sale_date, 'YYYY-MM')`;
+  const field = group === "product" ? "product_name" : group;
+  const fallback = ["business", "channel", "payment"].includes(group) ? "기타" : "미분류";
+  return sql`COALESCE(NULLIF(${sql(field)}, ''), ${fallback})`;
 }
+
+function summaryWhere(q: Record<string, string>) {
+  let where = sql`TRUE`;
+  if (q.start) where = sql`${where} AND sale_date >= ${asDate(q.start)}`;
+  if (q.end) where = sql`${where} AND sale_date <= ${asDate(q.end)}`;
+  if (q.start && q.end && q.start > q.end) throw new HttpError(400, "조회 기간을 확인해주세요.");
+  if (q.business) where = sql`${where} AND business = ${q.business}`;
+  return where;
+}
+
+const transactionCount = sql`COUNT(DISTINCT (NULLIF(transaction_no, ''),
+  CASE WHEN COALESCE(transaction_no, '') = '' THEN id END))::int`;
+const percent = (part: number, whole: number) => whole ? Math.round(part / whole * 1000) / 10 : 0;
 
 export function registerSaleRoutes(app: Api) {
   app.post("/api/sales", async (c) => {
@@ -93,30 +106,24 @@ export function registerSaleRoutes(app: Api) {
   app.get("/api/sales/summary", async (c) => {
     const q = c.req.query();
     const group = groups.has(q.group_by) ? q.group_by : "day";
-    let where = sql`TRUE`;
-    if (q.start) where = sql`${where} AND sale_date >= ${asDate(q.start)}`;
-    if (q.end) where = sql`${where} AND sale_date <= ${asDate(q.end)}`;
-    if (q.business) where = sql`${where} AND business = ${q.business}`;
-    const sales = await sql`SELECT sale_date::text AS sale_date, product_name, business,
-      category, subcategory, brand, channel, payment, cost_price, quantity, total
-      FROM public.sales WHERE ${where}`;
-    const aggregated = new Map<string, { key: string; total: number; cost_total: number; profit: number; count: number; quantity: number }>();
-    for (const sale of sales) {
-      const key = groupKey(sale, group);
-      const row = aggregated.get(key) ?? { key, total: 0, cost_total: 0, profit: 0, count: 0, quantity: 0 };
-      const cost = asInt(sale.cost_price) * asInt(sale.quantity);
-      row.total += asInt(sale.total);
-      row.cost_total += cost;
-      row.profit += asInt(sale.total) - cost;
-      row.count++;
-      row.quantity += asInt(sale.quantity);
-      aggregated.set(key, row);
-    }
-    const rows = [...aggregated.values()];
+    const grouped = await sql`WITH filtered AS (
+      SELECT * FROM public.sales WHERE ${summaryWhere(q)}
+    ), grouped AS (
+      SELECT ${groupExpression(group)} AS key, SUM(total) AS total,
+        SUM(COALESCE(cost_price, 0)::bigint * quantity) AS cost_total,
+        ${transactionCount} AS count, COUNT(*)::int AS line_count,
+        SUM(quantity) AS quantity FROM filtered GROUP BY 1
+    ) SELECT grouped.*, (SELECT ${transactionCount} FROM filtered) AS overall_count
+      FROM grouped`;
+    const rows = grouped.map((row) => ({
+      key: String(row.key), total: Number(row.total), cost_total: Number(row.cost_total),
+      profit: Number(row.total) - Number(row.cost_total), count: Number(row.count),
+      line_count: Number(row.line_count), quantity: Number(row.quantity),
+      overall_count: Number(row.overall_count),
+    }));
     const revenue = rows.reduce((sum, row) => sum + row.total, 0);
     const profit = rows.reduce((sum, row) => sum + row.profit, 0);
     const quantity = rows.reduce((sum, row) => sum + row.quantity, 0);
-    const percent = (part: number, whole: number) => whole ? Math.round(part / whole * 1000) / 10 : 0;
     return c.json(rows.map((row) => ({ ...row,
       margin_rate: percent(row.profit, row.total),
       revenue_percent: percent(row.total, revenue),
@@ -126,5 +133,41 @@ export function registerSaleRoutes(app: Api) {
       avg_profit: row.quantity ? Math.round(row.profit / row.quantity) : 0,
     })).sort((a, b) => group === "day" || group === "month"
       ? b.key.localeCompare(a.key) : a.key.localeCompare(b.key)));
+  });
+
+  app.get("/api/sales/summary/details", async (c) => {
+    const q = c.req.query();
+    if (!groups.has(q.group_by) || q.group_key === undefined) {
+      throw new HttpError(400, "집계 항목을 확인해주세요.");
+    }
+    let where = sql`${summaryWhere(q)} AND ${groupExpression(q.group_by)} = ${q.group_key}`;
+    if (q.snapshot_id) where = sql`${where} AND id <= ${asId(q.snapshot_id)}`;
+    const limit = Math.max(1, Math.min(asInt(q.limit, 100), 1000));
+    const before = q.before_id ? asId(q.before_id) : null;
+    return c.json(await sql.begin("isolation level repeatable read read only", async (tx) => {
+      const aggregate = (await tx`SELECT ${transactionCount} AS count, COUNT(*)::int AS line_count,
+        COALESCE(SUM(quantity), 0) AS quantity, COALESCE(SUM(total), 0) AS total,
+        COALESCE(SUM(COALESCE(cost_price, 0)::bigint * quantity), 0) AS cost_total,
+        MAX(id) AS max_id FROM public.sales WHERE ${where}`)[0];
+      const total = Number(aggregate.total);
+      const cost = Number(aggregate.cost_total);
+      const rows = await tx`WITH filtered AS (SELECT * FROM public.sales WHERE ${where})
+        SELECT filtered.id, transaction_no, sale_date::text AS sale_date, product_name,
+          business, category, subcategory, brand, cost_price, sale_price, quantity,
+          total, channel, payment, memo, COALESCE(u.name, '') AS staff_name
+        FROM filtered LEFT JOIN public.users u ON u.id = filtered.created_by
+        WHERE ${before === null ? sql`TRUE` : sql`filtered.id < ${before}`}
+        ORDER BY filtered.id DESC LIMIT ${limit + 1}`;
+      const hasMore = rows.length > limit;
+      const items = rows.slice(0, limit);
+      return {
+        items,
+        summary: { count: Number(aggregate.count), line_count: Number(aggregate.line_count),
+          quantity: Number(aggregate.quantity), total, cost_total: cost, profit: total - cost,
+          margin_rate: percent(total - cost, total) },
+        snapshot_id: aggregate.max_id,
+        next_before_id: hasMore ? items[items.length - 1].id : null,
+      };
+    }));
   });
 }
