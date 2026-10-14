@@ -4,6 +4,7 @@ import { sql } from "../_shared/db.ts";
 import { asDate, asId, asInt, cleanText, HttpError, pick } from "../_shared/http.ts";
 
 type Api = Hono<{ Variables: { user: AppUser } }>;
+const documentPrefixes = new Map([["문서", "M"], ["견적서", "Q"], ["납품서", "D"], ["거래명세서", "T"]]);
 
 function admin(user: AppUser) {
   if (user.role !== "admin") throw new HttpError(403, "관리자 권한이 필요합니다.");
@@ -111,8 +112,9 @@ export function registerExtraRoutes(app: Api) {
 
   app.post("/api/documents", async (c) => {
     const body = await c.req.json();
-    const docType = cleanText(body.doc_type);
-    const prefix = ({ "견적서": "Q", "납품서": "D", "거래명세서": "T" } as Record<string, string>)[docType] ?? "X";
+    const docType = cleanText(body.doc_type, "문서");
+    const prefix = documentPrefixes.get(docType);
+    if (!prefix) throw new HttpError(400, "문서 종류를 확인해주세요.");
     const items = Array.isArray(body.items) ? body.items : [];
     const user = c.get("user");
     const document = await sql.begin(async (tx) => {

@@ -292,3 +292,32 @@ Deno.test("bidirectional sale/history edits, line identity, stock and atomic rol
   await anonymous.text();
   assert(anonymous.status === 401, "sale edits require employee authentication");
 });
+
+Deno.test("neutral documents keep one identity and legacy documents remain available", async () => {
+  const user = (await sql`SELECT id FROM public.users WHERE username = 'test-admin'`)[0];
+  const { createToken } = await import("../_shared/auth.ts");
+  const token = await createToken({ id: user.id, username: "test-admin", name: "Tester", role: "admin", is_active: 1 });
+  const body = { business: "오아시스", doc_date: "2026-10-14", recipient: "Document customer",
+    total: 2000, memo: "Shared content", items: [{ name: "Shared product", spec: "Standard", qty: 2, price: 1000 }] };
+  const first = await request("POST", "/api/documents", token, body);
+  const second = await request("POST", "/api/documents", token, { ...body, doc_type: "" });
+  assert(first.doc_type === "문서" && first.doc_no === "M00001" && first.issuer_name === "Tester", "untyped content gets neutral number and issuer");
+  assert(second.doc_no === "M00002" && first.id !== second.id, "neutral numbers increment independently");
+  const legacy = await request("POST", "/api/documents", token, { ...body, doc_type: "납품서" });
+  assert(legacy.doc_no === "D00001" && legacy.doc_type === "납품서", "legacy client contract remains supported");
+  const list = await request("GET", "/api/documents?business=" + encodeURIComponent("오아시스"), token);
+  assert(list.length === 3 && list.some((doc: { id: number }) => doc.id === legacy.id), "neutral and legacy documents are listed together");
+  const detail = await request("GET", `/api/documents/${first.id}`, token);
+  assert(detail.doc_no === first.doc_no && detail.recipient === body.recipient && detail.total === body.total &&
+    detail.issuer_name === "Tester" && JSON.stringify(JSON.parse(detail.items_json)) === JSON.stringify(body.items), "stored identity and shared content remain stable");
+  await expectError("POST", "/api/documents", token, { ...body, doc_type: "constructor" });
+  assert((await request("GET", "/api/documents", token)).length === 3, "invalid document kind cannot create a record");
+  const staff = await request("POST", "/api/auth/users", token, {
+    username: "document-staff", password: "test-only", name: "Document Staff", role: "staff",
+  });
+  const staffToken = await createToken({ id: staff.id, username: "document-staff", name: "Document Staff", role: "staff", is_active: 1 });
+  await expectError("DELETE", `/api/documents/${first.id}`, staffToken, {}, 403);
+  assert((await request("GET", `/api/documents/${first.id}`, token)).doc_no === first.doc_no, "only administrators can delete documents");
+  for (const doc of [first, second, legacy]) await request("DELETE", `/api/documents/${doc.id}`, token);
+  await request("DELETE", `/api/auth/users/${staff.id}`, token);
+});

@@ -64,6 +64,16 @@ Cloudflare Pages builds the frontend from GitHub after a push. Its build command
 - To revert the frontend, first resume the suspended Render service, then restore the former Render URL in `frontend/.env.production` and redeploy Cloudflare Pages. Render must be running for that rollback path.
 - Do not delete the suspended Render service or the checked PostgreSQL dump until the new path has been used long enough to rule out operational regressions.
 
+## Document printing
+
+New documents store shared recipient/items/amounts under neutral type `문서` and an `M` number.
+No schema migration or rewrite of existing documents is needed. The preview selects an output
+type (quotation, transaction statement, delivery note) locally; printing never creates or
+changes a database record. Legacy `Q`, `D` and `T` numbers and issuer information are retained,
+and those documents can also be printed in all three formats. The API continues to accept
+legacy explicit document types for compatibility. All item rows are printed, including
+documents with more than ten lines; logo and stamp images load before the print dialog opens.
+
 ## Free-tier hygiene
 
 - Frontend pages load on demand. Excel code is fetched only for export, and SQLite parsing is loaded only for a DB import.

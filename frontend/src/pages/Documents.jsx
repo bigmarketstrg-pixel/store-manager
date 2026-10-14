@@ -3,8 +3,10 @@ import { docApi } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../hooks/useToast.jsx'
 import dayjs from 'dayjs'
+import { Eye, FilePlus2, Plus, Printer, X } from 'lucide-react'
+import './Documents.css'
 
-const DOC_TYPES = ['견적서', '납품서', '거래명세서']
+const DOC_TYPES = ['견적서', '거래명세서', '납품서']
 const BUSINESSES = ['오아시스', '훌라']
 const SEARCH_FIELDS = [
   { value: 'all', label: '전체' },
@@ -95,13 +97,13 @@ function numToKorean(n) {
 
 export default function Documents() {
   const [docs, setDocs] = useState([])
-  const [filterType, setFilterType] = useState('전체')
   const [filterBusiness, setFilterBusiness] = useState('전체')
   const [searchField, setSearchField] = useState('all')
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [previewDoc, setPreviewDoc] = useState(null)
+  const [openingId, setOpeningId] = useState(null)
   const { user } = useAuth()
   const { toast, ToastContainer } = useToast()
   const isAdmin = user?.role === 'admin'
@@ -109,14 +111,13 @@ export default function Documents() {
   const load = async () => {
     try {
       const params = {}
-      if (filterType !== '전체') params.doc_type = filterType
       if (filterBusiness !== '전체') params.business = filterBusiness
       const r = await docApi.list(params)
       setDocs(r.data)
     } catch { toast('불러오기 실패', 'error') }
   }
 
-  useEffect(() => { load() }, [filterType, filterBusiness, searchText])
+  useEffect(() => { load() }, [filterBusiness, searchText])
 
   const runSearch = () => setSearchText(searchInput)
   const resetSearch = () => {
@@ -145,23 +146,24 @@ export default function Documents() {
   }
 
   const openPreview = async (id) => {
-    const r = await docApi.get(id)
-    setPreviewDoc(r.data)
+    setOpeningId(id)
+    try {
+      const r = await docApi.get(id)
+      setPreviewDoc(r.data)
+    } catch (err) { toast(err.response?.data?.detail || '문서를 불러오지 못했습니다.', 'error') }
+    finally { setOpeningId(null) }
   }
 
   return (
     <div>
-      <div className="flex-between" style={{ marginBottom: 20 }}>
+      <div className="flex-between document-page-heading" style={{ marginBottom: 20 }}>
         <h1 className="page-title" style={{ margin: 0 }}>견적서 및 납품서 발행</h1>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ 새 문서</button>
+        <button className="btn btn-primary" onClick={() => setShowModal(true)}><FilePlus2 size={16} />새 문서</button>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-          <select className="input" value={filterType} onChange={e => setFilterType(e.target.value)} style={{ width: 140 }}>
-            {['전체', ...DOC_TYPES].map(t => <option key={t}>{t}</option>)}
-          </select>
-          <select className="input" value={filterBusiness} onChange={e => setFilterBusiness(e.target.value)} style={{ width: 120 }}>
+          <select aria-label="사업자 필터" className="input" value={filterBusiness} onChange={e => setFilterBusiness(e.target.value)} style={{ width: 120 }}>
             {['전체', ...BUSINESSES].map(b => <option key={b}>{b}</option>)}
           </select>
           <select className="input" value={searchField} onChange={e => setSearchField(e.target.value)} style={{ width: 120 }}>
@@ -184,16 +186,15 @@ export default function Documents() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>ID</th><th>문서번호</th><th>구분</th><th>사업자</th><th>날짜</th><th>수신처</th><th>발행인</th><th className="num">합계</th><th>메모</th><th></th></tr>
+              <tr><th>ID</th><th>문서번호</th><th>사업자</th><th>날짜</th><th>수신처</th><th>발행인</th><th className="num">합계</th><th>메모</th><th></th></tr>
             </thead>
             <tbody>
               {visibleDocs.length === 0 ? (
-                <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>문서가 없습니다</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 32 }}>문서가 없습니다</td></tr>
               ) : visibleDocs.map(d => (
                 <tr key={d.id}>
                   <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--muted)' }}>{d.id}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{d.doc_no}</td>
-                  <td><span className={`badge ${d.doc_type === '견적서' ? 'badge-blue' : d.doc_type === '납품서' ? 'badge-green' : 'badge-yellow'}`}>{d.doc_type}</span></td>
                   <td><span className="badge badge-purple">{d.business}</span></td>
                   <td style={{ fontSize: 12 }}>{d.doc_date}</td>
                   <td style={{ fontWeight: 500 }}>{d.recipient}</td>
@@ -202,7 +203,7 @@ export default function Documents() {
                   <td style={{ fontSize: 12, color: 'var(--muted)' }}>{d.memo}</td>
                   <td>
                     <div className="flex gap-8">
-                      <button className="btn btn-ghost btn-sm" onClick={() => openPreview(d.id)}>미리보기</button>
+                      <button className="btn btn-ghost btn-sm" disabled={openingId !== null} onClick={() => openPreview(d.id)}><Eye size={14} />{openingId === d.id ? '불러오는 중...' : '미리보기 · 인쇄'}</button>
                       {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => deleteDoc(d.id)}>삭제</button>}
                     </div>
                   </td>
@@ -216,12 +217,12 @@ export default function Documents() {
       {showModal && (
         <DocModal
           onClose={() => setShowModal(false)}
-          onSave={() => { setShowModal(false); load(); toast('문서 저장 완료') }}
+          onSave={(doc) => { setShowModal(false); setPreviewDoc(doc); load(); toast('문서 발행 완료') }}
           toast={toast}
         />
       )}
       {previewDoc && (
-        <DocPreview doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+        <DocPreview key={previewDoc.id} doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
       <ToastContainer />
     </div>
@@ -231,7 +232,6 @@ export default function Documents() {
 // ── 문서 작성 모달 ──────────────────────────────────────
 function DocModal({ onClose, onSave, toast }) {
   const [form, setForm] = useState({
-    doc_type: '견적서',
     business: '오아시스',
     doc_date: dayjs().format('YYYY-MM-DD'),
     recipient: '',
@@ -240,63 +240,62 @@ function DocModal({ onClose, onSave, toast }) {
   const [items, setItems] = useState([
     { name: '', spec: '', qty: 1, price: 0 }
   ])
+  const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   const setItem = (i, k, v) => setItems(prev => prev.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
   const addItem = () => setItems(p => [...p, { name: '', spec: '', qty: 1, price: 0 }])
   const removeItem = (i) => setItems(p => p.filter((_, idx) => idx !== i))
 
-  const total = items.reduce((s, i) => s + (i.price * i.qty), 0)
+  const total = items.filter(i => i.name.trim()).reduce((s, i) => s + (i.price * i.qty), 0)
   const fmt = n => n?.toLocaleString() || '0'
 
   const save = async () => {
-    if (!form.recipient) { toast('수신처를 입력하세요', 'error'); return }
-    const validItems = items.filter(i => i.name)
+    if (saving) return
+    if (!form.recipient.trim()) { toast('수신처를 입력하세요', 'error'); return }
+    const validItems = items.filter(i => i.name.trim())
     if (validItems.length === 0) { toast('품목을 하나 이상 입력하세요', 'error'); return }
+    setSaving(true)
     try {
-      await docApi.create({ ...form, total, items: validItems })
-      onSave()
+      const result = await docApi.create({ ...form, total, items: validItems })
+      onSave(result.data)
     } catch (err) { toast(err.response?.data?.detail || '저장 실패', 'error') }
+    finally { setSaving(false) }
   }
 
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" style={{ width: 680 }} onClick={e => e.stopPropagation()}>
-        <h2>새 문서 작성</h2>
-        <div className="grid-2" style={{ gap: 12, marginBottom: 20 }}>
+    <div className="modal-bg" onClick={() => { if (!saving) onClose() }}>
+      <div className="modal document-compose" role="dialog" aria-modal="true" aria-labelledby="document-compose-title" onClick={e => e.stopPropagation()}>
+        <h2 id="document-compose-title">새 문서 작성</h2>
+        <fieldset disabled={saving} className="document-fields">
           <div className="field">
-            <label>문서 종류</label>
-            <select className="input" value={form.doc_type} onChange={e => set('doc_type', e.target.value)}>
-              {DOC_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label>사업자</label>
-            <select className="input" value={form.business} onChange={e => set('business', e.target.value)}>
+            <label htmlFor="document-business">사업자</label>
+            <select id="document-business" className="input" value={form.business} onChange={e => set('business', e.target.value)}>
               {BUSINESSES.map(b => <option key={b}>{b}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>날짜</label>
-            <input className="input" type="date" value={form.doc_date} onChange={e => set('doc_date', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>수신처</label>
-            <input className="input" value={form.recipient} onChange={e => set('recipient', e.target.value)} placeholder="업체명 / 고객명" />
+            <label htmlFor="document-date">날짜</label>
+            <input id="document-date" className="input" type="date" value={form.doc_date} onChange={e => set('doc_date', e.target.value)} />
           </div>
           <div className="field" style={{ gridColumn: '1/-1' }}>
-            <label>메모</label>
-            <input className="input" value={form.memo} onChange={e => set('memo', e.target.value)} />
+            <label htmlFor="document-recipient">수신처</label>
+            <input id="document-recipient" className="input" value={form.recipient} onChange={e => set('recipient', e.target.value)} placeholder="업체명 / 고객명" />
           </div>
-        </div>
+          <div className="field" style={{ gridColumn: '1/-1' }}>
+            <label htmlFor="document-memo">메모</label>
+            <input id="document-memo" className="input" value={form.memo} onChange={e => set('memo', e.target.value)} />
+          </div>
+        </fieldset>
 
         {/* 품목 입력 */}
         <div style={{ marginBottom: 16 }}>
           <div className="flex-between" style={{ marginBottom: 8 }}>
             <div className="card-title" style={{ margin: 0 }}>품목</div>
-            <button className="btn btn-ghost btn-sm" onClick={addItem}>+ 행 추가</button>
+            <button className="btn btn-ghost btn-sm" disabled={saving} onClick={addItem}><Plus size={14} />행 추가</button>
           </div>
-          <table style={{ width: '100%', fontSize: 13 }}>
+          <fieldset disabled={saving} className="document-item-fields"><div className="table-wrap">
+          <table style={{ width: '100%', minWidth: 600, fontSize: 13 }}>
             <thead>
               <tr>
                 <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--muted)', fontSize: 11 }}>품목명</th>
@@ -311,29 +310,30 @@ function DocModal({ onClose, onSave, toast }) {
               {items.map((item, i) => (
                 <tr key={i}>
                   <td style={{ padding: '4px 4px' }}>
-                    <input className="input" style={{ padding: '5px 8px' }} value={item.name} onChange={e => setItem(i, 'name', e.target.value)} placeholder="품목명" />
+                    <input aria-label={`품목명 ${i + 1}`} className="input" style={{ padding: '5px 8px' }} value={item.name} onChange={e => setItem(i, 'name', e.target.value)} placeholder="품목명" />
                   </td>
                   <td style={{ padding: '4px 4px' }}>
-                    <input className="input" style={{ padding: '5px 8px' }} value={item.spec} onChange={e => setItem(i, 'spec', e.target.value)} placeholder="규격" />
+                    <input aria-label={`규격 ${i + 1}`} className="input" style={{ padding: '5px 8px' }} value={item.spec} onChange={e => setItem(i, 'spec', e.target.value)} placeholder="규격" />
                   </td>
                   <td style={{ padding: '4px 4px' }}>
-                    <input className="input" style={{ padding: '5px 8px', textAlign: 'center' }} type="number" min={1} value={item.qty} onChange={e => setItem(i, 'qty', +e.target.value)} />
+                    <input aria-label={`수량 ${i + 1}`} className="input" style={{ padding: '5px 8px', textAlign: 'center' }} type="number" min={1} value={item.qty} onChange={e => setItem(i, 'qty', +e.target.value)} />
                   </td>
                   <td style={{ padding: '4px 4px' }}>
-                    <input className="input" style={{ padding: '5px 8px', textAlign: 'right' }} type="number" value={item.price} onChange={e => setItem(i, 'price', +e.target.value)} />
+                    <input aria-label={`단가 ${i + 1}`} className="input" style={{ padding: '5px 8px', textAlign: 'right' }} type="number" value={item.price} onChange={e => setItem(i, 'price', +e.target.value)} />
                   </td>
                   <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--accent)' }}>
                     ₩{fmt(item.price * item.qty)}
                   </td>
                   <td>
                     {items.length > 1 && (
-                      <button onClick={() => removeItem(i)} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 16 }}>×</button>
+                      <button className="btn btn-ghost btn-sm" title="품목 삭제" aria-label={`품목 삭제 ${i + 1}`} onClick={() => removeItem(i)}><X size={14} /></button>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div></fieldset>
           <div style={{ textAlign: 'right', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
             <span style={{ color: 'var(--muted)', fontSize: 13 }}>합계 </span>
             <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>₩{fmt(total)}</span>
@@ -341,8 +341,8 @@ function DocModal({ onClose, onSave, toast }) {
         </div>
 
         <div className="flex gap-8">
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>취소</button>
-          <button className="btn btn-primary" style={{ flex: 2 }} onClick={save}>저장</button>
+          <button className="btn btn-ghost" disabled={saving} style={{ flex: 1 }} onClick={onClose}>취소</button>
+          <button className="btn btn-primary" disabled={saving} style={{ flex: 2 }} onClick={save}>{saving ? '발행 중...' : '발행'}</button>
         </div>
       </div>
     </div>
@@ -351,16 +351,19 @@ function DocModal({ onClose, onSave, toast }) {
 
 // ── 미리보기 모달 ──────────────────────────────────────
 function DocPreview({ doc, onClose }) {
+  const [printType, setPrintType] = useState(DOC_TYPES.includes(doc.doc_type) ? doc.doc_type : DOC_TYPES[0])
+  const [printing, setPrinting] = useState(false)
   const items = doc.items_json ? JSON.parse(doc.items_json) : []
   const fmt = n => n?.toLocaleString() || '0'
 
-  const print = () => {
+  const print = async () => {
+    if (printing) return
     const profile = getBusinessProfile(doc.business)
     const assetBase = window.location.origin
     const printItems = [...items]
     while (printItems.length < 10) printItems.push({ name: '', spec: '', qty: '', price: '' })
 
-    const itemRows = printItems.slice(0, 10).map((item, idx) => {
+    const itemRows = printItems.map((item, idx) => {
       const qty = Number(item.qty) || 0
       const price = Number(item.price) || 0
       const amount = qty && price ? qty * price : 0
@@ -380,12 +383,14 @@ function DocPreview({ doc, onClose }) {
       alert('팝업이 차단되어 인쇄 창을 열 수 없습니다.')
       return
     }
+    w.opener = null
+    setPrinting(true)
 
     w.document.write(`
       <!doctype html>
-      <html lang="ko"><head><meta charset="UTF-8"><title>${escapeHtml(doc.doc_type)} ${escapeHtml(doc.doc_no)}</title>
+      <html lang="ko"><head><meta charset="UTF-8"><title>${escapeHtml(printType)} ${escapeHtml(doc.doc_no)}</title>
       <style>
-        @page { size: A4; margin: 0; }
+        @page { size: A4; margin: 15mm 15mm 10mm; }
         * { box-sizing: border-box; }
         body {
           font-family: 'Noto Sans KR', 'Malgun Gothic', Arial, sans-serif;
@@ -453,14 +458,18 @@ function DocPreview({ doc, onClose }) {
         .doc-items th.l { text-align: left; }
         .doc-items td { padding: 3.5pt 5pt; border-bottom: .5pt solid #e0e0e0; font-size: 8.5pt; vertical-align: middle; height: 22pt; }
         .doc-items tbody tr:last-child td { border-bottom: 0; }
+        .doc-items thead { display: table-header-group; }
+        .doc-items tfoot { display: table-row-group; }
+        .doc-items tr { break-inside: avoid; }
         .doc-items tfoot td { padding: 4pt 5pt; border-top: 1pt solid #aaa; font-size: 8.5pt; font-weight: 600; }
         .num { text-align: right; font-variant-numeric: tabular-nums; }
         .cen { text-align: center; }
         .doc-memo { border-top: 1pt solid #ddd; padding-top: 3mm; font-size: 8pt; color: #444; white-space: pre-wrap; }
+        @media print { .doc { width: auto; min-height: 0; padding: 0; } }
       </style></head><body>
       <div class="doc">
         <div class="doc-logo"><img src="${assetBase}${profile.logo}" alt="${escapeHtml(profile.name)} 로고" /></div>
-        <div class="doc-title">${escapeHtml(doc.doc_type)}</div>
+        <div class="doc-title">${escapeHtml(printType)}</div>
 
         <div class="doc-top">
           <div class="doc-left">
@@ -487,7 +496,7 @@ function DocPreview({ doc, onClose }) {
           </div>
         </div>
 
-        <div class="doc-provide">아래와 같이 공급합니다</div>
+        <div class="doc-provide">${printType === '견적서' ? '아래와 같이 견적합니다.' : printType === '납품서' ? '아래와 같이 납품합니다.' : '아래와 같이 거래명세서를 발행합니다.'}</div>
 
         <div class="total-box">
           <div class="lbl1">합계금액<br><small>(공급가액+세액)</small></div>
@@ -524,18 +533,34 @@ function DocPreview({ doc, onClose }) {
       </body></html>
     `)
     w.document.close()
-    setTimeout(() => {
+    try {
+      await Promise.all(Array.from(w.document.images).map(img => new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('이미지 로드 시간 초과')), 10000)
+        const done = () => { clearTimeout(timeout); img.naturalWidth ? resolve() : reject(new Error('이미지 로드 실패')) }
+        if (img.complete) done()
+        else { img.addEventListener('load', done, { once: true }); img.addEventListener('error', done, { once: true }) }
+      })))
+      await w.document.fonts.ready
+      if (w.closed) return
       w.focus()
       w.print()
-    }, 250)
+    } catch {
+      if (!w.closed) alert('로고 또는 도장을 불러오지 못했습니다. 인쇄 창을 닫고 다시 시도해주세요.')
+    } finally { setPrinting(false) }
   }
 
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal" style={{ width: 620 }} onClick={e => e.stopPropagation()}>
-        <div className="flex-between" style={{ marginBottom: 20 }}>
-          <h2 style={{ margin: 0 }}>{doc.doc_type} — {doc.doc_no} <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>ID {doc.id}</span></h2>
-          <button className="btn btn-primary btn-sm" onClick={print}>🖨 인쇄</button>
+      <div className="modal document-preview" role="dialog" aria-modal="true" aria-labelledby="document-preview-title" onClick={e => e.stopPropagation()}>
+        <div className="document-preview-heading">
+          <h2 id="document-preview-title">{printType} · {doc.doc_no} <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>ID {doc.id}</span></h2>
+          <div className="document-print-controls">
+            <label htmlFor="document-print-type">인쇄 양식</label>
+            <select id="document-print-type" className="input" value={printType} disabled={printing} onChange={e => setPrintType(e.target.value)}>
+              {DOC_TYPES.map(type => <option key={type}>{type}</option>)}
+            </select>
+            <button className="btn btn-primary" disabled={printing} onClick={print}><Printer size={16} />{printing ? '준비 중...' : '인쇄'}</button>
+          </div>
         </div>
         <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 20, fontSize: 13 }}>
           <div className="flex gap-16" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
@@ -544,7 +569,7 @@ function DocPreview({ doc, onClose }) {
             <span><span className="text-muted">수신:</span> {doc.recipient}</span>
             <span><span className="text-muted">발행인:</span> {doc.issuer_name || '-'}</span>
           </div>
-          <table>
+          <div className="table-wrap"><table>
             <thead>
               <tr>
                 <th>품목</th><th>규격</th><th>수량</th><th className="num">단가</th><th className="num">금액</th>
@@ -561,7 +586,7 @@ function DocPreview({ doc, onClose }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           <div style={{ textAlign: 'right', marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
             <span className="text-muted" style={{ fontSize: 12 }}>합계 </span>
             <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>₩{fmt(doc.total)}</span>
