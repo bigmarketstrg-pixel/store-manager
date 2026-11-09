@@ -321,3 +321,63 @@ Deno.test("neutral documents keep one identity and legacy documents remain avail
   for (const doc of [first, second, legacy]) await request("DELETE", `/api/documents/${doc.id}`, token);
   await request("DELETE", `/api/auth/users/${staff.id}`, token);
 });
+
+Deno.test("document reissue preserves identity and issuer, validates totals and rejects stale edits", async () => {
+  const user = (await sql`SELECT id FROM public.users WHERE username = 'test-admin'`)[0];
+  const { createToken } = await import("../_shared/auth.ts");
+  const token = await createToken({ id: user.id, username: "test-admin", name: "Tester", role: "admin", is_active: 1 });
+  const staff = await request("POST", "/api/auth/users", token, {
+    username: "document-editor", password: "test-only", name: "Editor", role: "staff",
+  });
+  const staffToken = await createToken({ id: staff.id, username: "document-editor", name: "Editor", role: "staff", is_active: 1 });
+  const body = { business: "오아시스", doc_date: "2026-11-01", recipient: "Original recipient", total: 2600,
+    memo: "Original memo", items: [{ name: "A", spec: "Old", qty: 2, price: 1000 }, { name: "B", spec: "", qty: 3, price: 200 }] };
+  const document = await request("POST", "/api/documents", token, { ...body, doc_type: "견적서" });
+  const identity = (await sql`SELECT id, doc_no, doc_type, created_by, created_at FROM public.documents WHERE id = ${document.id}`)[0];
+  const inventory = (await sql`SELECT (SELECT sum(stock) FROM public.products) AS stock,
+    (SELECT sum(total) FROM public.sales) AS sales_total`)[0];
+  const updated = await request("PATCH", `/api/documents/${document.id}`, staffToken, {
+    version: document.version, business: "훌라", doc_date: "2026-11-09", recipient: "Correct recipient", memo: "Correct memo",
+    items: [{ name: "A corrected", spec: "New", qty: 4, price: 1200 }, { name: "C", spec: "", qty: 1, price: 500 }],
+    total: 1, doc_no: "FORGED", doc_type: "납품서", created_by: staff.id,
+  });
+  assert(updated.id === document.id && updated.doc_no === document.doc_no && updated.doc_type === "견적서" &&
+    updated.issuer_name === "Tester", "reissue keeps original ID, number, kind and issuer even when edited by another employee");
+  assert(updated.total === 5300 && updated.business === "훌라" && updated.doc_date === "2026-11-09" &&
+    updated.recipient === "Correct recipient" && JSON.parse(updated.items_json)[1].name === "C", "corrected content and server-calculated total");
+  assert(/^[a-f0-9]{32}$/.test(updated.version) && updated.version !== document.version, "content token changes after editing");
+  const afterIdentity = (await sql`SELECT id, doc_no, doc_type, created_by, created_at FROM public.documents WHERE id = ${document.id}`)[0];
+  assert(JSON.stringify(afterIdentity) === JSON.stringify(identity), "immutable metadata is unchanged");
+  const detail = await request("GET", `/api/documents/${document.id}`, token);
+  const listed = (await request("GET", "/api/documents?business=" + encodeURIComponent("훌라"), token)).find((row: { id: number }) => row.id === document.id);
+  assert(detail.version === updated.version && listed.version === updated.version && listed.total === 5300, "detail and filtered list reflect the same correction");
+  await expectError("PATCH", `/api/documents/${document.id}`, staffToken, { version: document.version, recipient: "Stale overwrite" }, 409);
+  const invalid = [
+    { recipient: " " }, { business: "" }, { doc_date: "2026-02-31" }, { items: [] },
+    { items: [{ name: "", qty: 1, price: 10 }] }, { items: [{ name: "Bad", qty: 0, price: 10 }] },
+    { items: [{ name: "Bad", qty: -1, price: 10 }] }, { items: [{ name: "Bad", qty: 1, price: "invalid" }] },
+    { items: [{ name: "Bad", qty: 2, price: 2147483647 }] }, { items: [{ name: "Bad", qty: 0.5, price: 1 }] },
+  ];
+  for (const change of invalid) await expectError("PATCH", `/api/documents/${document.id}`, staffToken, { version: updated.version, ...change });
+  await expectError("PATCH", `/api/documents/${document.id}`, staffToken, { memo: "Missing token" });
+  await expectError("PATCH", "/api/documents/999999", staffToken, { version: updated.version }, 404);
+  const unchanged = await request("GET", `/api/documents/${document.id}`, token);
+  assert(unchanged.version === updated.version && unchanged.recipient === "Correct recipient" && unchanged.total === 5300, "invalid or stale edits leave stored content untouched");
+  const partial = await request("PATCH", `/api/documents/${document.id}`, staffToken, { version: updated.version, memo: "Memo-only correction" });
+  assert(partial.total === 5300 && partial.items_json === updated.items_json, "memo-only edits keep items and calculated total");
+  const fractional = await request("PATCH", `/api/documents/${document.id}`, staffToken, { version: partial.version,
+    items: [{ name: "Length", qty: 1.5, price: 1000 }, { name: "Discount", qty: 1, price: -100 }] });
+  assert(fractional.total === 1400 && JSON.parse(fractional.items_json)[0].qty === 1.5, "fractional quantities and whole-won discount lines are retained");
+  assert((await request("GET", "/api/documents", token)).length === 1, "reissue does not duplicate the document");
+  const next = await request("POST", "/api/documents", token, { ...body, doc_type: "견적서" });
+  assert(next.doc_no === "Q00002", "editing does not consume a document number");
+  const afterInventory = (await sql`SELECT (SELECT sum(stock) FROM public.products) AS stock,
+    (SELECT sum(total) FROM public.sales) AS sales_total`)[0];
+  assert(JSON.stringify(inventory) === JSON.stringify(afterInventory), "document editing never changes inventory or sales");
+  await expectError("DELETE", `/api/documents/${document.id}`, staffToken, {}, 403);
+  const anonymous = await app.request(base + `/api/documents/${document.id}`, { method: "PATCH", body: "{}" });
+  await anonymous.text();
+  assert(anonymous.status === 401, "document editing requires employee authentication");
+  for (const row of [document, next]) await request("DELETE", `/api/documents/${row.id}`, token);
+  await request("DELETE", `/api/auth/users/${staff.id}`, token);
+});

@@ -85,6 +85,7 @@ export const docApi = {
   list: (params) => api.get('/api/documents', { params }),
   get: (id) => api.get(`/api/documents/${id}`),
   create: (data) => api.post('/api/documents', data),
+  update: (id, data) => api.patch(`/api/documents/${id}`, data),
   delete: (id) => api.delete(`/api/documents/${id}`),
 }
 

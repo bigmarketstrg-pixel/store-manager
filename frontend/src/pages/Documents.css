@@ -1,4 +1,5 @@
 .document-page-heading { gap: 12px; flex-wrap: wrap; }
+.document-edit-identity { margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .modal.document-compose { width: min(760px, 95vw); }
 .document-fields { border: 0; padding: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 20px; }
 .document-item-fields { border: 0; padding: 0; margin: 0; min-width: 0; }

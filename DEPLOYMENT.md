@@ -74,6 +74,15 @@ and those documents can also be printed in all three formats. The API continues 
 legacy explicit document types for compatibility. All item rows are printed, including
 documents with more than ten lines; logo and stamp images load before the print dialog opens.
 
+Documents can be corrected through authenticated `PATCH /api/documents/:id`. The original
+ID, number, kind, creator and creation time are immutable; corrections do not insert a
+second document or affect sales/inventory. Totals are recalculated from item quantities
+and prices on the server. The original issuer remains visible after another staff member
+edits a document, and deletion remains admin-only. List/detail/create/update responses
+include a content-based `version` token, which edits must supply. A locked transaction
+rejects stale tokens with 409 so concurrent staff edits cannot silently overwrite each
+other. This uses the existing table without a schema migration or version-history storage.
+
 ## Free-tier hygiene
 
 - Frontend pages load on demand. Excel code is fetched only for export, and SQLite parsing is loaded only for a DB import.

@@ -5,6 +5,42 @@ import { asDate, asId, asInt, cleanText, HttpError, pick } from "../_shared/http
 
 type Api = Hono<{ Variables: { user: AppUser } }>;
 const documentPrefixes = new Map([["문서", "M"], ["견적서", "Q"], ["납품서", "D"], ["거래명세서", "T"]]);
+// An edit token detects stale forms without changing the stored document schema.
+const documentVersion = sql`md5(ROW(d.business, d.doc_date, d.recipient, d.total, d.memo, d.items_json)::text)`;
+
+function documentContent(body: Record<string, unknown>) {
+  const business = cleanText(body.business);
+  const recipient = cleanText(body.recipient);
+  const date = asDate(body.doc_date);
+  if (!business || business.length > 20) throw new HttpError(400, "사업자를 확인해주세요.");
+  if (!recipient || recipient.length > 100) throw new HttpError(400, "수신처를 100자 이내로 입력해주세요.");
+  const parsedDate = new Date(`${date}T00:00:00Z`);
+  if (!Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
+    throw new HttpError(400, "날짜를 확인해주세요.");
+  }
+  if (!Array.isArray(body.items) || !body.items.length || body.items.length > 500) {
+    throw new HttpError(400, "품목을 1개 이상, 500개 이하로 입력해주세요.");
+  }
+  const items = body.items.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new HttpError(400, "품목을 확인해주세요.");
+    const name = cleanText(item.name);
+    const qty = Number(item.qty);
+    const price = Number(item.price);
+    if (!name || !Number.isFinite(qty) || qty <= 0 || qty > 2147483647 ||
+      !Number.isFinite(price) || Math.abs(price) > 2147483647) {
+      throw new HttpError(400, "품목명·수량·단가를 확인해주세요. 수량은 0보다 커야 합니다.");
+    }
+    return { ...item, name, spec: cleanText(item.spec), qty, price };
+  });
+  const rawTotal = items.reduce((sum, item) => sum + item.qty * item.price, 0);
+  const total = Math.round(rawTotal);
+  if (!Number.isSafeInteger(total) || Math.abs(rawTotal - total) > 0.000001 ||
+    total < -2147483648 || total > 2147483647) {
+    throw new HttpError(400, "합계 금액을 원 단위로 입력하고 금액이 너무 크지 않은지 확인해주세요.");
+  }
+  return { business, doc_date: date, recipient, total,
+    memo: body.memo == null ? null : String(body.memo), items_json: JSON.stringify(items) };
+}
 
 function admin(user: AppUser) {
   if (user.role !== "admin") throw new HttpError(403, "관리자 권한이 필요합니다.");
@@ -105,7 +141,7 @@ export function registerExtraRoutes(app: Api) {
     if (q.business) where = sql`${where} AND d.business = ${q.business}`;
     return c.json(await sql`SELECT d.id, d.doc_type, d.doc_no, d.business,
       d.doc_date::text AS doc_date, d.recipient, d.total, d.memo, d.items_json,
-      u.name AS issuer_name FROM public.documents d
+      u.name AS issuer_name, ${documentVersion} AS version FROM public.documents d
       LEFT JOIN public.users u ON u.id = d.created_by
       WHERE ${where} ORDER BY d.created_at DESC, d.id DESC`);
   });
@@ -123,13 +159,13 @@ export function registerExtraRoutes(app: Api) {
         ORDER BY id DESC LIMIT 1`;
       const next = last.length ? Number(String(last[0].doc_no).slice(1)) + 1 : 1;
       const docNo = `${prefix}${String(next).padStart(5, "0")}`;
-      const rows = await tx`INSERT INTO public.documents
+      const rows = await tx`INSERT INTO public.documents AS d
         (doc_type, doc_no, business, doc_date, recipient, total, memo, items_json, created_by)
         VALUES (${docType}, ${docNo}, ${cleanText(body.business)}, ${asDate(body.doc_date)},
           ${cleanText(body.recipient)}, ${asInt(body.total)}, ${body.memo ?? null},
           ${JSON.stringify(items)}, ${user.id})
         RETURNING id, doc_type, doc_no, business, doc_date::text AS doc_date,
-          recipient, total, memo, items_json`;
+          recipient, total, memo, items_json, ${documentVersion} AS version`;
       return rows[0];
     });
     return c.json({ ...document, issuer_name: user.name });
@@ -138,7 +174,7 @@ export function registerExtraRoutes(app: Api) {
   app.get("/api/documents/:id", async (c) => {
     const rows = await sql`SELECT d.id, d.doc_type, d.doc_no, d.business,
       d.doc_date::text AS doc_date, d.recipient, d.total, d.memo, d.items_json,
-      u.name AS issuer_name FROM public.documents d
+      u.name AS issuer_name, ${documentVersion} AS version FROM public.documents d
       LEFT JOIN public.users u ON u.id = d.created_by WHERE d.id = ${asId(c.req.param("id"))}`;
     if (!rows.length) throw new HttpError(404, "문서를 찾을 수 없습니다.");
     return c.json(rows[0]);
@@ -149,5 +185,29 @@ export function registerExtraRoutes(app: Api) {
     const rows = await sql`DELETE FROM public.documents WHERE id = ${asId(c.req.param("id"))} RETURNING id`;
     if (!rows.length) throw new HttpError(404, "문서를 찾을 수 없습니다.");
     return c.json({ ok: true });
+  });
+
+  app.patch("/api/documents/:id", async (c) => {
+    const id = asId(c.req.param("id"));
+    const body = await c.req.json();
+    if (!body || typeof body !== "object" || typeof body.version !== "string" || !/^[a-f0-9]{32}$/.test(body.version)) {
+      throw new HttpError(400, "문서를 다시 열어 최신 내용을 확인해주세요.");
+    }
+    return c.json(await sql.begin(async tx => {
+      const current = (await tx`SELECT d.*, d.doc_date::text AS doc_date, ${documentVersion} AS version
+        FROM public.documents d WHERE d.id = ${id} FOR UPDATE`)[0];
+      if (!current) throw new HttpError(404, "문서를 찾을 수 없습니다.");
+      if (current.version !== body.version) throw new HttpError(409, "다른 곳에서 문서가 수정되었습니다. 최신 문서를 확인해주세요.");
+      const changes = documentContent({ ...current,
+        ...pick(body, ["business", "doc_date", "recipient", "memo"]),
+        items: Object.hasOwn(body, "items") ? body.items : JSON.parse(current.items_json || "[]") });
+      const updated = (await tx`UPDATE public.documents AS d SET business = ${changes.business},
+        doc_date = ${changes.doc_date}, recipient = ${changes.recipient}, total = ${changes.total},
+        memo = ${changes.memo}, items_json = ${changes.items_json} WHERE d.id = ${id}
+        RETURNING d.id, d.doc_type, d.doc_no, d.business, d.doc_date::text AS doc_date,
+          d.recipient, d.total, d.memo, d.items_json, ${documentVersion} AS version`)[0];
+      const issuer = (await tx`SELECT name FROM public.users WHERE id = ${current.created_by ?? null}`)[0];
+      return { ...updated, issuer_name: issuer?.name ?? null };
+    }));
   });
 }

@@ -3,7 +3,7 @@ import { docApi } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../hooks/useToast.jsx'
 import dayjs from 'dayjs'
-import { Eye, FilePlus2, Plus, Printer, X } from 'lucide-react'
+import { Eye, FilePlus2, Pencil, Plus, Printer, X } from 'lucide-react'
 import './Documents.css'
 
 const DOC_TYPES = ['견적서', '거래명세서', '납품서']
@@ -54,6 +54,12 @@ const escapeHtml = (value = '') => String(value)
 
 const fmtWon = n => Math.round(Number(n) || 0).toLocaleString('ko-KR')
 
+function documentItems(doc) {
+  const items = doc?.items_json ? JSON.parse(doc.items_json) : []
+  if (!Array.isArray(items)) throw new Error('문서 품목 형식을 확인해주세요.')
+  return items
+}
+
 function getBusinessProfile(business) {
   if (BUSINESS_PROFILES[business]) return BUSINESS_PROFILES[business]
   if (business?.includes('훌라')) return BUSINESS_PROFILES.훌라
@@ -102,7 +108,9 @@ export default function Documents() {
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [editingDoc, setEditingDoc] = useState(null)
   const [previewDoc, setPreviewDoc] = useState(null)
+  const [previewType, setPreviewType] = useState(null)
   const [openingId, setOpeningId] = useState(null)
   const { user } = useAuth()
   const { toast, ToastContainer } = useToast()
@@ -145,11 +153,14 @@ export default function Documents() {
     catch { toast('삭제 실패', 'error') }
   }
 
-  const openPreview = async (id) => {
+  const openDocument = async (id, edit = false, printType = null) => {
     setOpeningId(id)
     try {
       const r = await docApi.get(id)
-      setPreviewDoc(r.data)
+      documentItems(r.data)
+      setPreviewType(printType)
+      if (edit) setEditingDoc(r.data)
+      else setPreviewDoc(r.data)
     } catch (err) { toast(err.response?.data?.detail || '문서를 불러오지 못했습니다.', 'error') }
     finally { setOpeningId(null) }
   }
@@ -158,7 +169,7 @@ export default function Documents() {
     <div>
       <div className="flex-between document-page-heading" style={{ marginBottom: 20 }}>
         <h1 className="page-title" style={{ margin: 0 }}>견적서 및 납품서 발행</h1>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}><FilePlus2 size={16} />새 문서</button>
+        <button className="btn btn-primary" disabled={openingId !== null} onClick={() => setShowModal(true)}><FilePlus2 size={16} />새 문서</button>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
@@ -202,8 +213,9 @@ export default function Documents() {
                   <td className="num fw-600" style={{ color: 'var(--accent)' }}>₩{d.total?.toLocaleString()}</td>
                   <td style={{ fontSize: 12, color: 'var(--muted)' }}>{d.memo}</td>
                   <td>
-                    <div className="flex gap-8">
-                      <button className="btn btn-ghost btn-sm" disabled={openingId !== null} onClick={() => openPreview(d.id)}><Eye size={14} />{openingId === d.id ? '불러오는 중...' : '미리보기 · 인쇄'}</button>
+                    <div className="flex gap-8" style={{ flexWrap: 'nowrap' }}>
+                      <button className="btn btn-ghost btn-sm" disabled={openingId !== null} onClick={() => openDocument(d.id)}><Eye size={14} />{openingId === d.id ? '불러오는 중...' : '미리보기 · 인쇄'}</button>
+                      <button className="btn btn-ghost btn-sm" disabled={openingId !== null} onClick={() => openDocument(d.id, true)}><Pencil size={14} />수정</button>
                       {isAdmin && <button className="btn btn-danger btn-sm" onClick={() => deleteDoc(d.id)}>삭제</button>}
                     </div>
                   </td>
@@ -214,15 +226,24 @@ export default function Documents() {
         </div>
       </div>
 
-      {showModal && (
+      {(showModal || editingDoc) && (
         <DocModal
-          onClose={() => setShowModal(false)}
-          onSave={(doc) => { setShowModal(false); setPreviewDoc(doc); load(); toast('문서 발행 완료') }}
+          key={editingDoc?.id || 'new'}
+          doc={editingDoc}
+          onClose={() => { setShowModal(false); setEditingDoc(null) }}
+          onSave={(doc) => {
+            const edited = !!editingDoc
+            setShowModal(false); setEditingDoc(null); setPreviewDoc(doc)
+            if (!edited) setPreviewType(null)
+            load(); toast(edited ? '문서 수정 발행 완료' : '문서 발행 완료')
+          }}
           toast={toast}
         />
       )}
-      {previewDoc && (
-        <DocPreview key={previewDoc.id} doc={previewDoc} onClose={() => setPreviewDoc(null)} />
+      {previewDoc && !editingDoc && !showModal && (
+        <DocPreview key={previewDoc.id} doc={previewDoc} initialType={previewType}
+          opening={openingId !== null} onEdit={type => openDocument(previewDoc.id, true, type)}
+          onClose={() => setPreviewDoc(null)} />
       )}
       <ToastContainer />
     </div>
@@ -230,16 +251,14 @@ export default function Documents() {
 }
 
 // ── 문서 작성 모달 ──────────────────────────────────────
-function DocModal({ onClose, onSave, toast }) {
+function DocModal({ doc, onClose, onSave, toast }) {
   const [form, setForm] = useState({
-    business: '오아시스',
-    doc_date: dayjs().format('YYYY-MM-DD'),
-    recipient: '',
-    memo: '',
+    business: doc?.business || '오아시스',
+    doc_date: doc?.doc_date || dayjs().format('YYYY-MM-DD'),
+    recipient: doc?.recipient || '',
+    memo: doc?.memo || '',
   })
-  const [items, setItems] = useState([
-    { name: '', spec: '', qty: 1, price: 0 }
-  ])
+  const [items, setItems] = useState(() => doc ? documentItems(doc).map(item => ({ ...item })) : [{ name: '', spec: '', qty: 1, price: 0 }])
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -255,9 +274,13 @@ function DocModal({ onClose, onSave, toast }) {
     if (!form.recipient.trim()) { toast('수신처를 입력하세요', 'error'); return }
     const validItems = items.filter(i => i.name.trim())
     if (validItems.length === 0) { toast('품목을 하나 이상 입력하세요', 'error'); return }
+    if (validItems.some(item => !Number.isFinite(Number(item.qty)) || Number(item.qty) <= 0 || !Number.isFinite(Number(item.price)))) {
+      toast('수량과 단가를 확인해주세요. 수량은 0보다 커야 합니다.', 'error'); return
+    }
     setSaving(true)
     try {
-      const result = await docApi.create({ ...form, total, items: validItems })
+      const data = { ...form, total, items: validItems }
+      const result = doc ? await docApi.update(doc.id, { ...data, version: doc.version }) : await docApi.create(data)
       onSave(result.data)
     } catch (err) { toast(err.response?.data?.detail || '저장 실패', 'error') }
     finally { setSaving(false) }
@@ -266,7 +289,8 @@ function DocModal({ onClose, onSave, toast }) {
   return (
     <div className="modal-bg" onClick={() => { if (!saving) onClose() }}>
       <div className="modal document-compose" role="dialog" aria-modal="true" aria-labelledby="document-compose-title" onClick={e => e.stopPropagation()}>
-        <h2 id="document-compose-title">새 문서 작성</h2>
+        <h2 id="document-compose-title">{doc ? '문서 수정' : '새 문서 작성'}</h2>
+        {doc && <div className="document-edit-identity">{doc.doc_no} · ID {doc.id} · 발행인 {doc.issuer_name || '-'}</div>}
         <fieldset disabled={saving} className="document-fields">
           <div className="field">
             <label htmlFor="document-business">사업자</label>
@@ -342,7 +366,7 @@ function DocModal({ onClose, onSave, toast }) {
 
         <div className="flex gap-8">
           <button className="btn btn-ghost" disabled={saving} style={{ flex: 1 }} onClick={onClose}>취소</button>
-          <button className="btn btn-primary" disabled={saving} style={{ flex: 2 }} onClick={save}>{saving ? '발행 중...' : '발행'}</button>
+          <button className="btn btn-primary" disabled={saving} style={{ flex: 2 }} onClick={save}>{saving ? (doc ? '수정 발행 중...' : '발행 중...') : (doc ? '수정 발행' : '발행')}</button>
         </div>
       </div>
     </div>
@@ -350,10 +374,10 @@ function DocModal({ onClose, onSave, toast }) {
 }
 
 // ── 미리보기 모달 ──────────────────────────────────────
-function DocPreview({ doc, onClose }) {
-  const [printType, setPrintType] = useState(DOC_TYPES.includes(doc.doc_type) ? doc.doc_type : DOC_TYPES[0])
+function DocPreview({ doc, initialType, onClose, onEdit, opening }) {
+  const [printType, setPrintType] = useState(DOC_TYPES.includes(initialType) ? initialType : DOC_TYPES.includes(doc.doc_type) ? doc.doc_type : DOC_TYPES[0])
   const [printing, setPrinting] = useState(false)
-  const items = doc.items_json ? JSON.parse(doc.items_json) : []
+  const items = documentItems(doc)
   const fmt = n => n?.toLocaleString() || '0'
 
   const print = async () => {
@@ -555,6 +579,7 @@ function DocPreview({ doc, onClose }) {
         <div className="document-preview-heading">
           <h2 id="document-preview-title">{printType} · {doc.doc_no} <span style={{ color: 'var(--muted)', fontSize: 13, fontWeight: 500 }}>ID {doc.id}</span></h2>
           <div className="document-print-controls">
+            <button className="btn btn-ghost" disabled={printing || opening} onClick={() => onEdit(printType)}><Pencil size={16} />수정</button>
             <label htmlFor="document-print-type">인쇄 양식</label>
             <select id="document-print-type" className="input" value={printType} disabled={printing} onChange={e => setPrintType(e.target.value)}>
               {DOC_TYPES.map(type => <option key={type}>{type}</option>)}
